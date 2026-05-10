@@ -1,10 +1,20 @@
 package config
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 	"strings"
 )
+
+// NatServer represents a single NATS server configuration
+type NatServer struct {
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+	User    string `json:"user,omitempty"`
+	Pass    string `json:"pass,omitempty"`
+	Monitor string `json:"monitor,omitempty"` // HTTP monitoring URL
+}
 
 type Config struct {
 	Port               string
@@ -24,6 +34,9 @@ type Config struct {
 	AllowedOAuth2Users string // comma-separated emails, "*" for all
 	RateLimitRPS       string // requests per second, default "20"
 
+	// Multiple NATS servers
+	Servers []NatServer
+
 	// Keycloak
 	KeycloakURL          string // e.g. https://keycloak.example.com
 	KeycloakRealm        string
@@ -40,17 +53,17 @@ type Config struct {
 
 func Load() *Config {
 	cfg := &Config{
-		Port:              getEnv("PORT", "3001"),
-		BaseURL:           getEnv("BASE_URL", "http://localhost:3001"),
-		NatsURL:           getEnv("NATS_URL", "nats://localhost:4222"),
-		NatsUser:          getEnv("NATS_USER", "admin"),
-		NatsPass:          getEnv("NATS_PASS", ""),
-		NatsMonitoringURL: os.Getenv("NATS_MONITORING_URL"),
-		AdminUser:         getEnv("ADMIN_USER", "admin"),
-		AdminPass:         getEnv("ADMIN_PASS", "admin"),
-		JWTSecret:         getEnv("JWT_SECRET", "change-me-in-production"),
-		CORSOrigins:       getEnv("CORS_ORIGINS", "*"),
-		RateLimitRPS:      getEnv("RATE_LIMIT_RPS", "20"),
+		Port:               getEnv("PORT", "3001"),
+		BaseURL:            getEnv("BASE_URL", "http://localhost:3001"),
+		NatsURL:            getEnv("NATS_URL", "nats://localhost:4222"),
+		NatsUser:           getEnv("NATS_USER", "admin"),
+		NatsPass:           getEnv("NATS_PASS", ""),
+		NatsMonitoringURL:  os.Getenv("NATS_MONITORING_URL"),
+		AdminUser:          getEnv("ADMIN_USER", "admin"),
+		AdminPass:          getEnv("ADMIN_PASS", "admin"),
+		JWTSecret:          getEnv("JWT_SECRET", "change-me-in-production"),
+		CORSOrigins:        getEnv("CORS_ORIGINS", "*"),
+		RateLimitRPS:       getEnv("RATE_LIMIT_RPS", "20"),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
@@ -67,6 +80,32 @@ func Load() *Config {
 		OIDCClientID:     os.Getenv("OIDC_CLIENT_ID"),
 		OIDCClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
 		OIDCScopes:       getEnv("OIDC_SCOPES", "openid email profile"),
+	}
+
+	// Load multiple NATS servers from NATS_SERVERS JSON
+	if serversJSON := os.Getenv("NATS_SERVERS"); serversJSON != "" {
+		var servers []NatServer
+		if err := json.Unmarshal([]byte(serversJSON), &servers); err != nil {
+			log.Printf("WARNING: failed to parse NATS_SERVERS: %v", err)
+		} else {
+			cfg.Servers = servers
+		}
+	}
+
+	// If no servers configured, add default from NATS_URL
+	if len(cfg.Servers) == 0 {
+		server := NatServer{
+			Name: "default",
+			URL:  cfg.NatsURL,
+		}
+		if cfg.NatsUser != "" && cfg.NatsPass != "" {
+			server.User = cfg.NatsUser
+			server.Pass = cfg.NatsPass
+		}
+		if cfg.NatsMonitoringURL != "" {
+			server.Monitor = cfg.NatsMonitoringURL
+		}
+		cfg.Servers = append(cfg.Servers, server)
 	}
 
 	if cfg.JWTSecret == "change-me-in-production" {

@@ -20,11 +20,17 @@ const (
 // GetMessages retrieves messages from a stream with flexible filtering.
 // Query params: seq, last, subject, start_time (RFC3339), limit (default 50, max 200).
 func (h *StreamsHandler) GetMessages(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
 	name := c.Param("name")
-	stream, err := h.nc.JS().Stream(ctx, name)
+	stream, err := nc.JS().Stream(ctx, name)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

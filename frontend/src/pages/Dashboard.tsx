@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useState, useCallback } from "react";
+import { motion } from "framer-motion";
 import {
   Activity,
   MessageSquare,
@@ -7,24 +7,48 @@ import {
   TrendingUp,
   Zap,
   Clock,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { useNats } from '../hooks/useNats';
-import { fetchNatsInfo, fetchNatsConnections, fetchJetStreamInfo } from '../services/nats-service';
-import { MetricCardSkeleton } from '../components/ui/skeletons';
-import { formatBytes, parseUptimeToSeconds, formatUptimeFromSeconds } from '../lib/format';
-import { staggerContainer, easings } from '../lib/animations';
-import { MetricCard } from '../components/dashboard/MetricCard';
-import { ServerInfo } from '../components/dashboard/ServerInfo';
-import { DisconnectedView } from '../components/dashboard/DisconnectedView';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+import { Badge } from "../components/ui/badge";
+import { useNats } from "../hooks/useNats";
+import { useServerStore } from "../stores/useServerStore";
+import {
+  fetchNatsInfo,
+  fetchNatsConnections,
+  fetchJetStreamInfo,
+} from "../services/nats-service";
+import { MetricCardSkeleton } from "../components/ui/skeletons";
+import {
+  formatBytes,
+  parseUptimeToSeconds,
+  formatUptimeFromSeconds,
+} from "../lib/format";
+import { staggerContainer, easings } from "../lib/animations";
+import { MetricCard } from "../components/dashboard/MetricCard";
+import { ServerInfo } from "../components/dashboard/ServerInfo";
+import { DisconnectedView } from "../components/dashboard/DisconnectedView";
 
 export default function Dashboard() {
   const { isConnected, status, error } = useNats();
-  const [serverInfo, setServerInfo] = useState<Record<string, unknown> | null>(null);
-  const [connections, setConnections] = useState<Record<string, unknown> | null>(null);
-  const [jetStreamInfo, setJetStreamInfo] = useState<Record<string, unknown> | null>(null);
+  const currentServer = useServerStore((state) => state.currentServer);
+  const [serverInfo, setServerInfo] = useState<Record<string, unknown> | null>(
+    null,
+  );
+  const [connections, setConnections] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [jetStreamInfo, setJetStreamInfo] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [uptimeOffset, setUptimeOffset] = useState<number>(0);
@@ -33,7 +57,7 @@ export default function Dashboard() {
 
   // Fetch real NATS metrics
   const fetchMetrics = useCallback(async () => {
-    if (!isConnected) return;
+    if (!isConnected || !currentServer) return;
 
     // Only show loading on initial load
     if (initialLoading) {
@@ -42,9 +66,9 @@ export default function Dashboard() {
 
     try {
       const [info, conns, js] = await Promise.all([
-        fetchNatsInfo(),
-        fetchNatsConnections(),
-        fetchJetStreamInfo()
+        fetchNatsInfo(currentServer),
+        fetchNatsConnections(currentServer),
+        fetchJetStreamInfo(currentServer),
       ]);
 
       setServerInfo(info);
@@ -52,7 +76,7 @@ export default function Dashboard() {
       setJetStreamInfo(js);
 
       // Update the uptime reference point
-      if (info?.uptime && typeof info.uptime === 'string') {
+      if (info?.uptime && typeof info.uptime === "string") {
         setUptimeOffset(parseUptimeToSeconds(info.uptime));
         setLastFetchTime(Date.now());
       }
@@ -61,13 +85,13 @@ export default function Dashboard() {
         setInitialLoading(false);
       }
     } catch (error) {
-      console.error('Failed to fetch NATS metrics:', error);
+      console.error("Failed to fetch NATS metrics:", error);
     } finally {
       if (initialLoading) {
         setLoading(false);
       }
     }
-  }, [isConnected, initialLoading]);
+  }, [isConnected, currentServer, initialLoading]);
 
   useEffect(() => {
     fetchMetrics();
@@ -92,9 +116,11 @@ export default function Dashboard() {
 
   // Calculate real-time uptime
   const getRealTimeUptime = (): string => {
-    if (!uptimeOffset || !isConnected) return '0s';
+    if (!uptimeOffset || !isConnected) return "0s";
 
-    const elapsedSinceLastFetch = Math.floor((currentTime - lastFetchTime) / 1000);
+    const elapsedSinceLastFetch = Math.floor(
+      (currentTime - lastFetchTime) / 1000,
+    );
     const currentUptimeSeconds = uptimeOffset + elapsedSinceLastFetch;
 
     return formatUptimeFromSeconds(currentUptimeSeconds);
@@ -102,17 +128,25 @@ export default function Dashboard() {
 
   // Calculate metrics from real data
   const metrics = {
-    connections: Array.isArray((connections as Record<string, unknown>)?.connections)
-      ? ((connections as Record<string, unknown>).connections as unknown[]).length
+    connections: Array.isArray(
+      (connections as Record<string, unknown>)?.connections,
+    )
+      ? ((connections as Record<string, unknown>).connections as unknown[])
+          .length
       : 0,
-    subscriptions: typeof serverInfo?.subscriptions === 'number' ? serverInfo.subscriptions : 0,
-    messages: typeof serverInfo?.in_msgs === 'number' ? serverInfo.in_msgs : 0,
-    bytesIn: serverInfo && typeof serverInfo.in_bytes === 'number'
-      ? formatBytes(serverInfo.in_bytes)
-      : '0 B',
-    bytesOut: serverInfo && typeof serverInfo.out_bytes === 'number'
-      ? formatBytes(serverInfo.out_bytes)
-      : '0 B',
+    subscriptions:
+      typeof serverInfo?.subscriptions === "number"
+        ? serverInfo.subscriptions
+        : 0,
+    messages: typeof serverInfo?.in_msgs === "number" ? serverInfo.in_msgs : 0,
+    bytesIn:
+      serverInfo && typeof serverInfo.in_bytes === "number"
+        ? formatBytes(serverInfo.in_bytes)
+        : "0 B",
+    bytesOut:
+      serverInfo && typeof serverInfo.out_bytes === "number"
+        ? formatBytes(serverInfo.out_bytes)
+        : "0 B",
     uptime: getRealTimeUptime(),
   };
 
@@ -181,9 +215,7 @@ export default function Dashboard() {
               <TrendingUp className="h-5 w-5" />
               Data In
             </CardTitle>
-            <CardDescription>
-              Total data received by the server
-            </CardDescription>
+            <CardDescription>Total data received by the server</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{metrics.bytesIn}</div>
@@ -196,9 +228,7 @@ export default function Dashboard() {
               <TrendingUp className="h-5 w-5 rotate-180" />
               Data Out
             </CardTitle>
-            <CardDescription>
-              Total data sent by the server
-            </CardDescription>
+            <CardDescription>Total data sent by the server</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{metrics.bytesOut}</div>
@@ -235,14 +265,18 @@ function ConnectionStatusCard({ status, error }: ConnectionStatusCardProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <motion.div
-              animate={status === 'connected' ? {
-                scale: [1, 1.08, 1],
-                transition: {
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: easings.standard
-                }
-              } : {}}
+              animate={
+                status === "connected"
+                  ? {
+                      scale: [1, 1.08, 1],
+                      transition: {
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: easings.standard,
+                      },
+                    }
+                  : {}
+              }
             >
               <Activity className="h-5 w-5" />
             </motion.div>
@@ -262,7 +296,9 @@ function ConnectionStatusCard({ status, error }: ConnectionStatusCardProps) {
                 animate={{ scale: 1 }}
                 transition={{ duration: 0.2 }}
               >
-                <Badge variant={status === 'connected' ? 'default' : 'destructive'}>
+                <Badge
+                  variant={status === "connected" ? "default" : "destructive"}
+                >
                   {status}
                 </Badge>
               </motion.div>
@@ -272,7 +308,7 @@ function ConnectionStatusCard({ status, error }: ConnectionStatusCardProps) {
             <motion.div
               className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md"
               initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
+              animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
             >
               <p className="text-sm text-destructive">{error}</p>
@@ -283,4 +319,3 @@ function ConnectionStatusCard({ status, error }: ConnectionStatusCardProps) {
     </motion.div>
   );
 }
-

@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation } from "react-router-dom";
 import {
   Activity,
   Database,
@@ -11,15 +11,16 @@ import {
   GitBranch,
   Users,
   Monitor,
-} from 'lucide-react';
+  Server,
+} from "lucide-react";
 
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
-} from '../ui/breadcrumb';
-import { Separator } from '../ui/separator';
+} from "../ui/breadcrumb";
+import { Separator } from "../ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -32,54 +33,63 @@ import {
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
-} from '../ui/sidebar';
-import { Badge } from '../ui/badge';
-import { NavMain, type NavItem } from './nav-main';
-import { NavUser } from './nav-user';
-import { useNats } from '../../hooks/useNats';
-import { CommandPalette } from '../command-palette/CommandPalette';
-import { NatsIcon } from '../ui/nats-icon';
+} from "../ui/sidebar";
+import { Badge } from "../ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { NavMain, type NavItem } from "./nav-main";
+import { NavUser } from "./nav-user";
+import { useNats } from "../../hooks/useNats";
+import { useServerStore } from "../../stores/useServerStore";
+import { CommandPalette } from "../command-palette/CommandPalette";
+import { NatsIcon } from "../ui/nats-icon";
+import { useEffect } from "react";
 
 const navItems: NavItem[] = [
-  { title: 'Dashboard', path: '/', icon: Home },
-  { title: 'Messages', path: '/messages', icon: MessageSquare },
-  { title: 'Streams', path: '/streams', icon: GitBranch },
-  { title: 'Consumers', path: '/consumers', icon: Users },
-  { title: 'KV Store', path: '/kv-store', icon: Database },
-  { title: 'Object Store', path: '/object-store', icon: Package },
+  { title: "Dashboard", path: "/", icon: Home },
+  { title: "Messages", path: "/messages", icon: MessageSquare },
+  { title: "Streams", path: "/streams", icon: GitBranch },
+  { title: "Consumers", path: "/consumers", icon: Users },
+  { title: "KV Store", path: "/kv-store", icon: Database },
+  { title: "Object Store", path: "/object-store", icon: Package },
 ];
 
 const systemItems: NavItem[] = [
-  { title: 'Monitoring', path: '/monitoring', icon: Monitor },
-  { title: 'Cluster', path: '/cluster', icon: Network },
-  { title: 'System Events', path: '/system-events', icon: Activity },
-  { title: 'Benchmark', path: '/benchmark', icon: Gauge },
-  { title: 'Settings', path: '/settings', icon: Settings },
+  { title: "Monitoring", path: "/monitoring", icon: Monitor },
+  { title: "Cluster", path: "/cluster", icon: Network },
+  { title: "System Events", path: "/system-events", icon: Activity },
+  { title: "Benchmark", path: "/benchmark", icon: Gauge },
+  { title: "Settings", path: "/settings", icon: Settings },
 ];
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case 'connected':
-      return 'bg-green-500';
-    case 'connecting':
-      return 'bg-yellow-500';
-    case 'error':
-      return 'bg-red-500';
+    case "connected":
+      return "bg-green-500";
+    case "connecting":
+      return "bg-yellow-500";
+    case "error":
+      return "bg-red-500";
     default:
-      return 'bg-gray-500';
+      return "bg-gray-500";
   }
 };
 
 const getStatusText = (status: string) => {
   switch (status) {
-    case 'connected':
-      return 'Connected';
-    case 'connecting':
-      return 'Connecting...';
-    case 'error':
-      return 'Error';
+    case "connected":
+      return "Connected";
+    case "connecting":
+      return "Connecting...";
+    case "error":
+      return "Error";
     default:
-      return 'Disconnected';
+      return "Disconnected";
   }
 };
 
@@ -88,12 +98,21 @@ const allItems = [...navItems, ...systemItems];
 export function MainLayout() {
   const location = useLocation();
   const { status, username } = useNats();
+  const { servers, currentServer, fetchServers, setCurrentServer } =
+    useServerStore();
+
+  useEffect(() => {
+    fetchServers();
+  }, [fetchServers]);
 
   const currentPage =
-    allItems.find((item) => item.path === location.pathname)?.title || 'NATS UI';
+    allItems.find((item) => item.path === location.pathname)?.title ||
+    "NATS UI";
 
   return (
-    <SidebarProvider defaultOpen={document.cookie.includes('sidebar_state=true')}>
+    <SidebarProvider
+      defaultOpen={document.cookie.includes("sidebar_state=true")}
+    >
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <SidebarMenu>
@@ -124,7 +143,7 @@ export function MainLayout() {
         </SidebarContent>
 
         <SidebarFooter>
-          <NavUser username={username || 'admin'} />
+          <NavUser username={username || "admin"} />
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>
@@ -145,19 +164,34 @@ export function MainLayout() {
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="ml-auto pr-4">
+          <div className="ml-auto pr-4 flex items-center gap-3">
+            {servers.length > 1 && (
+              <Select value={currentServer} onValueChange={setCurrentServer}>
+                <SelectTrigger className="w-[180px]">
+                  <Server className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="Select server" />
+                </SelectTrigger>
+                <SelectContent>
+                  {servers.map((server) => (
+                    <SelectItem key={server} value={server}>
+                      {server}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Badge
               variant={
-                status === 'connected'
-                  ? 'default'
-                  : status === 'error'
-                    ? 'destructive'
-                    : 'outline'
+                status === "connected"
+                  ? "default"
+                  : status === "error"
+                    ? "destructive"
+                    : "outline"
               }
               className={
-                status === 'connected'
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-                  : ''
+                status === "connected"
+                  ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                  : ""
               }
             >
               NATS: {getStatusText(status)}

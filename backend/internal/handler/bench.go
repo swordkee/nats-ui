@@ -12,11 +12,16 @@ import (
 )
 
 type BenchHandler struct {
-	nc *natsclient.Client
+	sm *natsclient.ServerManager
 }
 
-func NewBenchHandler(nc *natsclient.Client) *BenchHandler {
-	return &BenchHandler{nc: nc}
+func NewBenchHandler(sm *natsclient.ServerManager) *BenchHandler {
+	return &BenchHandler{sm: sm}
+}
+
+func (h *BenchHandler) getClient(c *gin.Context) (*natsclient.Client, error) {
+	serverName := c.Param("server")
+	return h.sm.Get(serverName)
 }
 
 type BenchRequest struct {
@@ -41,6 +46,12 @@ type BenchResult struct {
 func (h *BenchHandler) Run(c *gin.Context) {
 	var req BenchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	nc, err := h.getClient(c)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -73,7 +84,7 @@ func (h *BenchHandler) Run(c *gin.Context) {
 	var subWg sync.WaitGroup
 	var received int64
 	for i := 0; i < req.NumSubs; i++ {
-		sub, ch, err := h.nc.Subscribe(req.Subject)
+		sub, ch, err := nc.Subscribe(req.Subject)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -100,11 +111,11 @@ func (h *BenchHandler) Run(c *gin.Context) {
 		go func() {
 			defer pubWg.Done()
 			for j := 0; j < msgsPerPub; j++ {
-				if err := h.nc.Conn().Publish(req.Subject, payload); err != nil {
+				if err := nc.Conn().Publish(req.Subject, payload); err != nil {
 					return
 				}
 			}
-			if err := h.nc.Conn().Flush(); err != nil {
+			if err := nc.Conn().Flush(); err != nil {
 				return
 			}
 		}()

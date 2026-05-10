@@ -14,21 +14,32 @@ import (
 )
 
 type ObjectStoreHandler struct {
-	nc *natsclient.Client
+	sm *natsclient.ServerManager
 }
 
-func NewObjectStoreHandler(nc *natsclient.Client) *ObjectStoreHandler {
-	return &ObjectStoreHandler{nc: nc}
+func NewObjectStoreHandler(sm *natsclient.ServerManager) *ObjectStoreHandler {
+	return &ObjectStoreHandler{sm: sm}
+}
+
+func (h *ObjectStoreHandler) getClient(c *gin.Context) (*natsclient.Client, error) {
+	serverName := c.Param("server")
+	return h.sm.Get(serverName)
 }
 
 func (h *ObjectStoreHandler) ListBuckets(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	var buckets []map[string]any
-	lister := h.nc.JS().ObjectStoreNames(ctx)
+	lister := nc.JS().ObjectStoreNames(ctx)
 	for name := range lister.Name() {
-		store, err := h.nc.JS().ObjectStore(ctx, name)
+		store, err := nc.JS().ObjectStore(ctx, name)
 		if err != nil {
 			continue
 		}
@@ -56,11 +67,17 @@ func (h *ObjectStoreHandler) ListBuckets(c *gin.Context) {
 }
 
 func (h *ObjectStoreHandler) GetBucket(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	name := c.Param("bucket")
-	store, err := h.nc.JS().ObjectStore(ctx, name)
+	store, err := nc.JS().ObjectStore(ctx, name)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -100,6 +117,12 @@ func (h *ObjectStoreHandler) CreateBucket(c *gin.Context) {
 		return
 	}
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
@@ -114,7 +137,7 @@ func (h *ObjectStoreHandler) CreateBucket(c *gin.Context) {
 		cfg.TTL = time.Duration(req.TTL) * time.Second
 	}
 
-	store, err := h.nc.JS().CreateObjectStore(ctx, cfg)
+	store, err := nc.JS().CreateObjectStore(ctx, cfg)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -133,11 +156,17 @@ func (h *ObjectStoreHandler) CreateBucket(c *gin.Context) {
 }
 
 func (h *ObjectStoreHandler) DeleteBucket(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	name := c.Param("bucket")
-	if err := h.nc.JS().DeleteObjectStore(ctx, name); err != nil {
+	if err := nc.JS().DeleteObjectStore(ctx, name); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -145,11 +174,17 @@ func (h *ObjectStoreHandler) DeleteBucket(c *gin.Context) {
 }
 
 func (h *ObjectStoreHandler) ListObjects(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
-	store, err := h.nc.JS().ObjectStore(ctx, bucket)
+	store, err := nc.JS().ObjectStore(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -179,13 +214,19 @@ func (h *ObjectStoreHandler) ListObjects(c *gin.Context) {
 }
 
 func (h *ObjectStoreHandler) GetObject(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
 	name := c.Param("name")
 
-	store, err := h.nc.JS().ObjectStore(ctx, bucket)
+	store, err := nc.JS().ObjectStore(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -209,13 +250,19 @@ func (h *ObjectStoreHandler) GetObject(c *gin.Context) {
 }
 
 func (h *ObjectStoreHandler) PutObject(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
 	name := c.Param("name")
 
-	store, err := h.nc.JS().ObjectStore(ctx, bucket)
+	store, err := nc.JS().ObjectStore(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -242,13 +289,19 @@ func (h *ObjectStoreHandler) PutObject(c *gin.Context) {
 }
 
 func (h *ObjectStoreHandler) DeleteObject(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
 	name := c.Param("name")
 
-	store, err := h.nc.JS().ObjectStore(ctx, bucket)
+	store, err := nc.JS().ObjectStore(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -262,13 +315,19 @@ func (h *ObjectStoreHandler) DeleteObject(c *gin.Context) {
 }
 
 func (h *ObjectStoreHandler) GetObjectInfo(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
 	name := c.Param("name")
 
-	store, err := h.nc.JS().ObjectStore(ctx, bucket)
+	store, err := nc.JS().ObjectStore(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

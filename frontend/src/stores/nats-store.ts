@@ -1,9 +1,20 @@
-import { create } from 'zustand';
-import { toast } from 'sonner';
-import { createNatsService, type NatsService } from '@/services/nats-service';
-import { hasToken, setToken, clearToken, getMe, checkHealth } from '@/services/api-client';
+import { create } from "zustand";
+import { toast } from "sonner";
+import { createNatsService, type NatsService } from "@/services/nats-service";
+import {
+  hasToken,
+  setToken,
+  clearToken,
+  getMe,
+  checkHealth,
+} from "@/services/api-client";
+import { useServerStore } from "@/stores/useServerStore";
 
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type ConnectionStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
 
 interface NatsState {
   connection: NatsService | null;
@@ -26,7 +37,7 @@ let connecting = false;
 
 export const useNatsStore = create<NatsState & NatsActions>((set, get) => ({
   connection: null,
-  status: 'disconnected',
+  status: "disconnected",
   error: null,
   username: null,
   isConnected: false,
@@ -35,23 +46,29 @@ export const useNatsStore = create<NatsState & NatsActions>((set, get) => ({
     if (connecting) return;
     if (!hasToken()) return;
 
+    const currentServer = useServerStore.getState().currentServer;
+    if (!currentServer) {
+      set({ error: "No server selected", status: "error", isConnected: false });
+      return;
+    }
+
     connecting = true;
-    set({ status: 'connecting', error: null, isConnected: false });
+    set({ status: "connecting", error: null, isConnected: false });
 
     try {
       const me = await getMe();
-      const service = await createNatsService();
+      const service = await createNatsService(currentServer);
       set({
         connection: service,
-        status: 'connected',
+        status: "connected",
         error: null,
         username: me.username,
         isConnected: true,
       });
-      toast.success('Connected to NATS backend');
+      toast.success("Connected to NATS backend");
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      set({ error: message, status: 'error', isConnected: false });
+      const message = err instanceof Error ? err.message : "Unknown error";
+      set({ error: message, status: "error", isConnected: false });
     } finally {
       connecting = false;
     }
@@ -65,28 +82,29 @@ export const useNatsStore = create<NatsState & NatsActions>((set, get) => ({
     clearToken();
     set({
       connection: null,
-      status: 'disconnected',
+      status: "disconnected",
       error: null,
       username: null,
       isConnected: false,
     });
-    toast.info('Disconnected');
+    toast.info("Disconnected");
   },
 
   handleOAuthToken: (token: string) => {
     setToken(token);
-    window.history.replaceState({}, '', window.location.pathname);
+    window.history.replaceState({}, "", window.location.pathname);
     get().connect();
   },
 
   checkHealthStatus: async () => {
-    if (get().status !== 'connected') return;
+    if (get().status !== "connected") return;
+    const currentServer = useServerStore.getState().currentServer;
     try {
-      const health = await checkHealth();
+      const health = await checkHealth(currentServer);
       if (!health.connected) {
         set({
-          error: 'Backend lost NATS connection',
-          status: 'error',
+          error: "Backend lost NATS connection",
+          status: "error",
           isConnected: false,
         });
       }
@@ -96,6 +114,6 @@ export const useNatsStore = create<NatsState & NatsActions>((set, get) => ({
   },
 
   _setError: (error: string) => {
-    set({ error, status: 'error', isConnected: false });
+    set({ error, status: "error", isConnected: false });
   },
 }));

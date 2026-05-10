@@ -5,21 +5,25 @@
  * Re-exports everything from the base api-client for convenience.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 function getToken(): string | null {
-  return localStorage.getItem('nats-ui-token');
+  return localStorage.getItem("nats-ui-token");
 }
 
 // Health check
 export async function fetchHealthCheck(): Promise<unknown> {
   const token = getToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const response = await fetch(`${API_BASE}/api/server/healthz`, { headers });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText }));
+    const body = await response
+      .json()
+      .catch(() => ({ error: response.statusText }));
     throw new Error(body.error || `HTTP ${response.status}`);
   }
   return response.json();
@@ -28,15 +32,22 @@ export async function fetchHealthCheck(): Promise<unknown> {
 // Stream seal
 export async function sealStream(name: string): Promise<void> {
   const token = getToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const response = await fetch(`${API_BASE}/api/streams/${encodeURIComponent(name)}/seal`, {
-    method: 'POST',
-    headers,
-  });
+  const response = await fetch(
+    `${API_BASE}/api/streams/${encodeURIComponent(name)}/seal`,
+    {
+      method: "POST",
+      headers,
+    },
+  );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText }));
+    const body = await response
+      .json()
+      .catch(() => ({ error: response.statusText }));
     throw new Error(body.error || `HTTP ${response.status}`);
   }
 }
@@ -56,13 +67,17 @@ export async function fetchNextMessages(
   batch = 1,
 ): Promise<PulledMessage[]> {
   const token = getToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const url = `${API_BASE}/api/streams/${encodeURIComponent(stream)}/consumers/${encodeURIComponent(consumer)}/next?batch=${batch}`;
-  const response = await fetch(url, { method: 'POST', headers });
+  const response = await fetch(url, { method: "POST", headers });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText }));
+    const body = await response
+      .json()
+      .catch(() => ({ error: response.statusText }));
     throw new Error(body.error || `HTTP ${response.status}`);
   }
   return response.json();
@@ -76,12 +91,12 @@ export function watchKVBucket(
 ): () => void {
   const token = getToken();
   const url = `${API_BASE}/api/kv/${encodeURIComponent(bucket)}/watch?key=${encodeURIComponent(key)}`;
-  const es = new EventSource(url + (token ? `&token=${token}` : ''));
+  const es = new EventSource(url + (token ? `&token=${token}` : ""));
   es.onmessage = (e) => {
     try {
       onEvent(JSON.parse(e.data));
     } catch (err) {
-      console.error('Failed to parse KV watch event:', err);
+      console.error("Failed to parse KV watch event:", err);
     }
   };
   return () => es.close();
@@ -95,16 +110,17 @@ export interface SystemEvent {
 }
 
 export function subscribeSystemEvents(
+  server: string,
   onEvent: (data: SystemEvent) => void,
 ): () => void {
   const token = getToken();
-  const url = `${API_BASE}/api/server/events`;
-  const es = new EventSource(url + (token ? `?token=${token}` : ''));
+  const url = `${API_BASE}/api/servers/${encodeURIComponent(server)}/events`;
+  const es = new EventSource(url + (token ? `?token=${token}` : ""));
   es.onmessage = (e) => {
     try {
       onEvent(JSON.parse(e.data));
     } catch (err) {
-      console.error('Failed to parse system event:', err);
+      console.error("Failed to parse system event:", err);
     }
   };
   return () => es.close();
@@ -130,18 +146,28 @@ export interface BenchResult {
   subscribers: number;
 }
 
-export async function runBenchmark(req: BenchRequest): Promise<BenchResult> {
+export async function runBenchmark(
+  server: string,
+  req: BenchRequest,
+): Promise<BenchResult> {
   const token = getToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const response = await fetch(`${API_BASE}/api/bench`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(req),
-  });
+  const response = await fetch(
+    `${API_BASE}/api/servers/${encodeURIComponent(server)}/bench`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+    },
+  );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText }));
+    const body = await response
+      .json()
+      .catch(() => ({ error: response.statusText }));
     throw new Error(body.error || `HTTP ${response.status}`);
   }
   return response.json();

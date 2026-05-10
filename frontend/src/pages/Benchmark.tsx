@@ -1,14 +1,31 @@
-import { useState, useCallback } from 'react';
-import { Gauge, Play, Clock, Zap, HardDrive } from 'lucide-react';
-import { toast } from 'sonner';
+import { useState, useCallback } from "react";
+import { Gauge, Play, Clock, Zap, HardDrive } from "lucide-react";
+import { toast } from "sonner";
 
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { runBenchmark, type BenchRequest, type BenchResult } from '../services/api-client-extended';
-import { formatBytes } from '../lib/format';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { useServerStore } from "../stores/useServerStore";
+import {
+  runBenchmark,
+  type BenchRequest,
+  type BenchResult,
+} from "../services/api-client-extended";
+import { formatBytes } from "../lib/format";
 
 interface HistoryEntry {
   id: number;
@@ -18,7 +35,8 @@ interface HistoryEntry {
 }
 
 export function Benchmark() {
-  const [subject, setSubject] = useState('bench.test');
+  const currentServer = useServerStore((state) => state.currentServer);
+  const [subject, setSubject] = useState("bench.test");
   const [msgSize, setMsgSize] = useState(128);
   const [numMsgs, setNumMsgs] = useState(10000);
   const [numPubs, setNumPubs] = useState(1);
@@ -28,8 +46,12 @@ export function Benchmark() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   const handleRun = useCallback(async () => {
+    if (!currentServer) {
+      toast.error("No server selected");
+      return;
+    }
     if (!subject.trim()) {
-      toast.error('Subject is required');
+      toast.error("Subject is required");
       return;
     }
     setRunning(true);
@@ -42,19 +64,21 @@ export function Benchmark() {
         num_pubs: numPubs,
         num_subs: numSubs,
       };
-      const res = await runBenchmark(req);
+      const res = await runBenchmark(currentServer, req);
       setResult(res);
       setHistory((prev) => [
         { id: Date.now(), request: req, result: res, timestamp: new Date() },
         ...prev.slice(0, 19),
       ]);
-      toast.success('Benchmark completed');
+      toast.success("Benchmark completed");
     } catch (err) {
-      toast.error(`Benchmark failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast.error(
+        `Benchmark failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
     } finally {
       setRunning(false);
     }
-  }, [subject, msgSize, numMsgs, numPubs, numSubs]);
+  }, [currentServer, subject, msgSize, numMsgs, numPubs, numSubs]);
 
   return (
     <div className="h-full flex flex-col p-4 overflow-auto">
@@ -92,13 +116,31 @@ export function Benchmark() {
 }
 
 function BenchmarkForm({
-  subject, msgSize, numMsgs, numPubs, numSubs, running,
-  onSubjectChange, onMsgSizeChange, onNumMsgsChange, onNumPubsChange, onNumSubsChange, onRun,
+  subject,
+  msgSize,
+  numMsgs,
+  numPubs,
+  numSubs,
+  running,
+  onSubjectChange,
+  onMsgSizeChange,
+  onNumMsgsChange,
+  onNumPubsChange,
+  onNumSubsChange,
+  onRun,
 }: {
-  subject: string; msgSize: number; numMsgs: number; numPubs: number; numSubs: number; running: boolean;
-  onSubjectChange: (v: string) => void; onMsgSizeChange: (v: number) => void;
-  onNumMsgsChange: (v: number) => void; onNumPubsChange: (v: number) => void;
-  onNumSubsChange: (v: number) => void; onRun: () => void;
+  subject: string;
+  msgSize: number;
+  numMsgs: number;
+  numPubs: number;
+  numSubs: number;
+  running: boolean;
+  onSubjectChange: (v: string) => void;
+  onMsgSizeChange: (v: number) => void;
+  onNumMsgsChange: (v: number) => void;
+  onNumPubsChange: (v: number) => void;
+  onNumSubsChange: (v: number) => void;
+  onRun: () => void;
 }) {
   return (
     <Card>
@@ -109,7 +151,9 @@ function BenchmarkForm({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1">
-          <Label htmlFor="bench-subject" className="text-xs">Subject (required)</Label>
+          <Label htmlFor="bench-subject" className="text-xs">
+            Subject (required)
+          </Label>
           <Input
             id="bench-subject"
             value={subject}
@@ -120,7 +164,9 @@ function BenchmarkForm({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label htmlFor="bench-msg-size" className="text-xs">Message Size (bytes)</Label>
+            <Label htmlFor="bench-msg-size" className="text-xs">
+              Message Size (bytes)
+            </Label>
             <Input
               id="bench-msg-size"
               type="number"
@@ -131,7 +177,9 @@ function BenchmarkForm({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="bench-num-msgs" className="text-xs">Number of Messages</Label>
+            <Label htmlFor="bench-num-msgs" className="text-xs">
+              Number of Messages
+            </Label>
             <Input
               id="bench-num-msgs"
               type="number"
@@ -142,7 +190,9 @@ function BenchmarkForm({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="bench-pubs" className="text-xs">Publishers</Label>
+            <Label htmlFor="bench-pubs" className="text-xs">
+              Publishers
+            </Label>
             <Input
               id="bench-pubs"
               type="number"
@@ -153,7 +203,9 @@ function BenchmarkForm({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="bench-subs" className="text-xs">Subscribers</Label>
+            <Label htmlFor="bench-subs" className="text-xs">
+              Subscribers
+            </Label>
             <Input
               id="bench-subs"
               type="number"
@@ -166,7 +218,7 @@ function BenchmarkForm({
         </div>
         <Button onClick={onRun} disabled={running} className="w-full">
           <Play className="mr-2 h-4 w-4" />
-          {running ? 'Running...' : 'Run Benchmark'}
+          {running ? "Running..." : "Run Benchmark"}
         </Button>
       </CardContent>
     </Card>
@@ -176,17 +228,49 @@ function BenchmarkForm({
 function BenchmarkResults({ result }: { result: BenchResult }) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      <ResultCard icon={Zap} label="Messages/sec" value={result.msgs_per_sec.toLocaleString()} />
-      <ResultCard icon={HardDrive} label="Bytes/sec" value={formatBytes(result.bytes_per_sec) + '/s'} />
-      <ResultCard icon={Clock} label="Duration" value={`${result.duration_ms.toLocaleString()} ms`} />
-      <ResultCard icon={Gauge} label="Total Messages" value={result.total_msgs.toLocaleString()} />
-      <ResultCard icon={HardDrive} label="Total Bytes" value={formatBytes(result.total_bytes)} />
-      <ResultCard icon={Gauge} label="Message Size" value={formatBytes(result.msg_size)} />
+      <ResultCard
+        icon={Zap}
+        label="Messages/sec"
+        value={result.msgs_per_sec.toLocaleString()}
+      />
+      <ResultCard
+        icon={HardDrive}
+        label="Bytes/sec"
+        value={formatBytes(result.bytes_per_sec) + "/s"}
+      />
+      <ResultCard
+        icon={Clock}
+        label="Duration"
+        value={`${result.duration_ms.toLocaleString()} ms`}
+      />
+      <ResultCard
+        icon={Gauge}
+        label="Total Messages"
+        value={result.total_msgs.toLocaleString()}
+      />
+      <ResultCard
+        icon={HardDrive}
+        label="Total Bytes"
+        value={formatBytes(result.total_bytes)}
+      />
+      <ResultCard
+        icon={Gauge}
+        label="Message Size"
+        value={formatBytes(result.msg_size)}
+      />
     </div>
   );
 }
 
-function ResultCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+function ResultCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
   return (
     <Card>
       <CardContent className="pt-4">
@@ -227,13 +311,23 @@ function BenchmarkHistory({ history }: { history: HistoryEntry[] }) {
             <TableBody>
               {history.map((entry) => (
                 <TableRow key={entry.id}>
-                  <TableCell className="text-xs">{entry.timestamp.toLocaleTimeString()}</TableCell>
-                  <TableCell className="font-mono text-xs">{entry.request.subject}</TableCell>
-                  <TableCell>{entry.result.total_msgs.toLocaleString()}</TableCell>
+                  <TableCell className="text-xs">
+                    {entry.timestamp.toLocaleTimeString()}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {entry.request.subject}
+                  </TableCell>
+                  <TableCell>
+                    {entry.result.total_msgs.toLocaleString()}
+                  </TableCell>
                   <TableCell>{formatBytes(entry.result.msg_size)}</TableCell>
                   <TableCell>{entry.result.duration_ms} ms</TableCell>
-                  <TableCell className="font-bold">{entry.result.msgs_per_sec.toLocaleString()}</TableCell>
-                  <TableCell>{formatBytes(entry.result.bytes_per_sec)}/s</TableCell>
+                  <TableCell className="font-bold">
+                    {entry.result.msgs_per_sec.toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    {formatBytes(entry.result.bytes_per_sec)}/s
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

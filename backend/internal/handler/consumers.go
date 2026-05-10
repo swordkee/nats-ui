@@ -12,11 +12,16 @@ import (
 )
 
 type ConsumersHandler struct {
-	nc *natsclient.Client
+	sm *natsclient.ServerManager
 }
 
-func NewConsumersHandler(nc *natsclient.Client) *ConsumersHandler {
-	return &ConsumersHandler{nc: nc}
+func NewConsumersHandler(sm *natsclient.ServerManager) *ConsumersHandler {
+	return &ConsumersHandler{sm: sm}
+}
+
+func (h *ConsumersHandler) getClient(c *gin.Context) (*natsclient.Client, error) {
+	serverName := c.Param("server")
+	return h.sm.Get(serverName)
 }
 
 type createConsumerRequest struct {
@@ -37,11 +42,17 @@ func (h *ConsumersHandler) Create(c *gin.Context) {
 		return
 	}
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	streamName := c.Param("name")
-	stream, err := h.nc.JS().Stream(ctx, streamName)
+	stream, err := nc.JS().Stream(ctx, streamName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -94,24 +105,30 @@ func (h *ConsumersHandler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, map[string]any{
-		"config":      info.Config,
-		"stream_name": streamName,
-		"name":        info.Config.Name,
-		"delivered":   info.Delivered,
-		"ack_floor":   info.AckFloor,
-		"num_pending":  info.NumPending,
-		"num_waiting":  info.NumWaiting,
+		"config":          info.Config,
+		"stream_name":     streamName,
+		"name":            info.Config.Name,
+		"delivered":       info.Delivered,
+		"ack_floor":       info.AckFloor,
+		"num_pending":     info.NumPending,
+		"num_waiting":     info.NumWaiting,
 		"num_ack_pending": info.NumAckPending,
-		"created":     info.Created,
+		"created":         info.Created,
 	})
 }
 
 func (h *ConsumersHandler) List(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	streamName := c.Param("name")
-	stream, err := h.nc.JS().Stream(ctx, streamName)
+	stream, err := nc.JS().Stream(ctx, streamName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -121,15 +138,15 @@ func (h *ConsumersHandler) List(c *gin.Context) {
 	lister := stream.ListConsumers(ctx)
 	for info := range lister.Info() {
 		consumers = append(consumers, map[string]any{
-			"config":      info.Config,
-			"stream_name": streamName,
-			"name":        info.Config.Name,
-			"delivered":   info.Delivered,
-			"ack_floor":   info.AckFloor,
-			"num_pending":  info.NumPending,
-			"num_waiting":  info.NumWaiting,
+			"config":          info.Config,
+			"stream_name":     streamName,
+			"name":            info.Config.Name,
+			"delivered":       info.Delivered,
+			"ack_floor":       info.AckFloor,
+			"num_pending":     info.NumPending,
+			"num_waiting":     info.NumWaiting,
 			"num_ack_pending": info.NumAckPending,
-			"created":     info.Created,
+			"created":         info.Created,
 		})
 	}
 	if lister.Err() != nil {
@@ -143,13 +160,19 @@ func (h *ConsumersHandler) List(c *gin.Context) {
 }
 
 func (h *ConsumersHandler) Get(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	streamName := c.Param("name")
 	consumerName := c.Param("consumer")
 
-	stream, err := h.nc.JS().Stream(ctx, streamName)
+	stream, err := nc.JS().Stream(ctx, streamName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -168,25 +191,31 @@ func (h *ConsumersHandler) Get(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, map[string]any{
-		"config":      info.Config,
-		"stream_name": streamName,
-		"delivered":   info.Delivered,
-		"ack_floor":   info.AckFloor,
-		"num_pending":  info.NumPending,
-		"num_waiting":  info.NumWaiting,
+		"config":          info.Config,
+		"stream_name":     streamName,
+		"delivered":       info.Delivered,
+		"ack_floor":       info.AckFloor,
+		"num_pending":     info.NumPending,
+		"num_waiting":     info.NumWaiting,
 		"num_ack_pending": info.NumAckPending,
-		"created":     info.Created,
+		"created":         info.Created,
 	})
 }
 
 func (h *ConsumersHandler) Delete(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	streamName := c.Param("name")
 	consumerName := c.Param("consumer")
 
-	stream, err := h.nc.JS().Stream(ctx, streamName)
+	stream, err := nc.JS().Stream(ctx, streamName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -205,13 +234,19 @@ type pauseConsumerRequest struct {
 }
 
 func (h *ConsumersHandler) Pause(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	streamName := c.Param("name")
 	consumerName := c.Param("consumer")
 
-	stream, err := h.nc.JS().Stream(ctx, streamName)
+	stream, err := nc.JS().Stream(ctx, streamName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -259,13 +294,19 @@ func (h *ConsumersHandler) Pause(c *gin.Context) {
 }
 
 func (h *ConsumersHandler) Resume(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	streamName := c.Param("name")
 	consumerName := c.Param("consumer")
 
-	stream, err := h.nc.JS().Stream(ctx, streamName)
+	stream, err := nc.JS().Stream(ctx, streamName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

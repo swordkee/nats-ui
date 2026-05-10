@@ -1,41 +1,49 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Eye } from 'lucide-react';
-import { toast } from 'sonner';
+import { useState, useCallback, useEffect } from "react";
+import { Eye } from "lucide-react";
+import { toast } from "sonner";
 
-import { Button } from '../components/ui/button';
-import { useNats } from '../hooks/useNats';
+import { Button } from "../components/ui/button";
+import { useNats } from "../hooks/useNats";
+import { useServerStore } from "../stores/useServerStore";
 
-import { CreateBucketDialog } from '../components/kv/CreateBucketDialog';
-import { EditKeyDialog } from '../components/kv/EditKeyDialog';
-import { BucketList } from '../components/kv/BucketList';
-import { KeyValueTable } from '../components/kv/KeyValueTable';
-import { KVWatchPanel } from '../components/kv/KVWatchPanel';
-import { KVStatsCards } from '../components/kv/KVStatsCards';
-import type { KVEntry, KVFormData, BucketFormData } from '../components/kv/types';
+import { CreateBucketDialog } from "../components/kv/CreateBucketDialog";
+import { EditKeyDialog } from "../components/kv/EditKeyDialog";
+import { BucketList } from "../components/kv/BucketList";
+import { KeyValueTable } from "../components/kv/KeyValueTable";
+import { KVWatchPanel } from "../components/kv/KVWatchPanel";
+import { KVStatsCards } from "../components/kv/KVStatsCards";
+import type {
+  KVEntry,
+  KVFormData,
+  BucketFormData,
+} from "../components/kv/types";
 
 export function KVStore() {
   const { connection, isConnected } = useNats();
+  const currentServer = useServerStore((state) => state.currentServer);
   const [entries, setEntries] = useState<KVEntry[]>([]);
   const [buckets, setBuckets] = useState<string[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<KVEntry | null>(null);
-  const [selectedBucket, setSelectedBucket] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedBucket, setSelectedBucket] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreateBucketOpen, setIsCreateBucketOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [currentBucket, setCurrentBucket] = useState<string>('');
+  const [currentBucket, setCurrentBucket] = useState<string>("");
   const [watchBucket, setWatchBucket] = useState<string | null>(null);
 
-  const filteredEntries = entries.filter(entry => {
-    const matchesSearch = entry.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         entry.value.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesBucket = selectedBucket === 'all' || entry.bucket === selectedBucket;
+  const filteredEntries = entries.filter((entry) => {
+    const matchesSearch =
+      entry.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      entry.value.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesBucket =
+      selectedBucket === "all" || entry.bucket === selectedBucket;
     return matchesSearch && matchesBucket;
   });
 
   const fetchKVData = useCallback(async () => {
-    if (!isConnected || !connection) return;
+    if (!isConnected || !connection || !currentServer) return;
 
     setLoading(true);
     try {
@@ -61,11 +69,11 @@ export function KVStore() {
       }
       setEntries(allEntries);
     } catch (error) {
-      console.error('Failed to fetch KV data:', error);
+      console.error("Failed to fetch KV data:", error);
     } finally {
       setLoading(false);
     }
-  }, [isConnected, connection]);
+  }, [isConnected, connection, currentServer]);
 
   useEffect(() => {
     fetchKVData();
@@ -75,57 +83,76 @@ export function KVStore() {
     }
   }, [isConnected, fetchKVData]);
 
-  const handleCreateBucket = useCallback(async (data: BucketFormData) => {
-    if (!connection) {
-      toast.error('Not connected to NATS server');
-      return;
-    }
-    try {
-      await connection.jetstream.createKVBucket(data.name, data.ttl);
-      toast.success(`Created bucket: ${data.name}`);
-      setIsCreateBucketOpen(false);
-      await fetchKVData();
-    } catch (err) {
-      console.error('Create bucket error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      if (errorMessage.includes('JetStream not enabled')) {
-        toast.error('JetStream is not enabled on the NATS server');
-      } else if (errorMessage.includes('already exists')) {
-        toast.error(`Bucket "${data.name}" already exists`);
-      } else {
-        toast.error(`Failed to create bucket: ${errorMessage}`);
-      }
-    }
-  }, [connection, fetchKVData]);
-
-  const handleCreateOrUpdate = useCallback(async (data: KVFormData) => {
-    if (!connection) {
-      toast.error('Not connected to NATS server');
-      return;
-    }
-    try {
-      const bucket = isEditMode ? selectedEntry?.bucket : (currentBucket || buckets[0]);
-      if (!bucket) {
-        toast.error('No bucket selected');
+  const handleCreateBucket = useCallback(
+    async (data: BucketFormData) => {
+      if (!connection) {
+        toast.error("Not connected to NATS server");
         return;
       }
-      await connection.jetstream.putKVValue(bucket, data.key, data.value);
-      if (isEditMode && selectedEntry) {
-        toast.success(`Updated key: ${selectedEntry.key}`);
-      } else {
-        toast.success(`Created key: ${data.key} in bucket: ${bucket}`);
+      try {
+        await connection.jetstream.createKVBucket(data.name, data.ttl);
+        toast.success(`Created bucket: ${data.name}`);
+        setIsCreateBucketOpen(false);
+        await fetchKVData();
+      } catch (err) {
+        console.error("Create bucket error:", err);
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        if (errorMessage.includes("JetStream not enabled")) {
+          toast.error("JetStream is not enabled on the NATS server");
+        } else if (errorMessage.includes("already exists")) {
+          toast.error(`Bucket "${data.name}" already exists`);
+        } else {
+          toast.error(`Failed to create bucket: ${errorMessage}`);
+        }
       }
-      setIsCreateOpen(false);
-      setIsEditMode(false);
-      setSelectedEntry(null);
-      await fetchKVData();
-      setTimeout(async () => { await fetchKVData(); }, 1500);
-    } catch (err) {
-      console.error('KV operation error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      toast.error(`Failed to save key-value pair: ${errorMessage}`);
-    }
-  }, [connection, isEditMode, selectedEntry, currentBucket, buckets, fetchKVData]);
+    },
+    [connection, fetchKVData],
+  );
+
+  const handleCreateOrUpdate = useCallback(
+    async (data: KVFormData) => {
+      if (!connection) {
+        toast.error("Not connected to NATS server");
+        return;
+      }
+      try {
+        const bucket = isEditMode
+          ? selectedEntry?.bucket
+          : currentBucket || buckets[0];
+        if (!bucket) {
+          toast.error("No bucket selected");
+          return;
+        }
+        await connection.jetstream.putKVValue(bucket, data.key, data.value);
+        if (isEditMode && selectedEntry) {
+          toast.success(`Updated key: ${selectedEntry.key}`);
+        } else {
+          toast.success(`Created key: ${data.key} in bucket: ${bucket}`);
+        }
+        setIsCreateOpen(false);
+        setIsEditMode(false);
+        setSelectedEntry(null);
+        await fetchKVData();
+        setTimeout(async () => {
+          await fetchKVData();
+        }, 1500);
+      } catch (err) {
+        console.error("KV operation error:", err);
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        toast.error(`Failed to save key-value pair: ${errorMessage}`);
+      }
+    },
+    [
+      connection,
+      isEditMode,
+      selectedEntry,
+      currentBucket,
+      buckets,
+      fetchKVData,
+    ],
+  );
 
   const handleEdit = useCallback((entry: KVEntry) => {
     setSelectedEntry(entry);
@@ -133,36 +160,45 @@ export function KVStore() {
     setIsCreateOpen(true);
   }, []);
 
-  const handleDelete = useCallback(async (key: string, bucket: string) => {
-    if (!connection) {
-      toast.error('Not connected to NATS server');
-      return;
-    }
-    try {
-      await connection.jetstream.deleteKVKey(bucket, key);
-      toast.success(`Deleted key: ${key}`);
-      await fetchKVData();
-    } catch (err) {
-      console.error('Delete key error:', err);
-      toast.error(`Failed to delete key: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }, [connection, fetchKVData]);
+  const handleDelete = useCallback(
+    async (key: string, bucket: string) => {
+      if (!connection) {
+        toast.error("Not connected to NATS server");
+        return;
+      }
+      try {
+        await connection.jetstream.deleteKVKey(bucket, key);
+        toast.success(`Deleted key: ${key}`);
+        await fetchKVData();
+      } catch (err) {
+        console.error("Delete key error:", err);
+        toast.error(
+          `Failed to delete key: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+      }
+    },
+    [connection, fetchKVData],
+  );
 
-  const handleDeleteBucket = useCallback(async (bucket: string) => {
-    if (!connection) {
-      toast.error('Not connected to NATS server');
-      return;
-    }
-    try {
-      await connection.jetstream.deleteKVBucket(bucket);
-      toast.success(`Deleted bucket: ${bucket}`);
-      await fetchKVData();
-    } catch (err) {
-      console.error('Delete bucket error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      toast.error(`Failed to delete bucket: ${errorMessage}`);
-    }
-  }, [connection, fetchKVData]);
+  const handleDeleteBucket = useCallback(
+    async (bucket: string) => {
+      if (!connection) {
+        toast.error("Not connected to NATS server");
+        return;
+      }
+      try {
+        await connection.jetstream.deleteKVBucket(bucket);
+        toast.success(`Deleted bucket: ${bucket}`);
+        await fetchKVData();
+      } catch (err) {
+        console.error("Delete bucket error:", err);
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        toast.error(`Failed to delete bucket: ${errorMessage}`);
+      }
+    },
+    [connection, fetchKVData],
+  );
 
   const handleEditDialogClose = useCallback(() => {
     setIsEditMode(false);
@@ -239,7 +275,10 @@ export function KVStore() {
 
       {watchBucket && (
         <div className="mb-4 flex-shrink-0">
-          <KVWatchPanel bucket={watchBucket} onClose={() => setWatchBucket(null)} />
+          <KVWatchPanel
+            bucket={watchBucket}
+            onClose={() => setWatchBucket(null)}
+          />
         </div>
       )}
 

@@ -15,6 +15,12 @@ func (h *ConsumersHandler) NextMessage(c *gin.Context) {
 	streamName := c.Param("name")
 	consumerName := c.Param("consumer")
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	batch, _ := strconv.Atoi(c.DefaultQuery("batch", "1"))
 	if batch < 1 {
 		batch = 1
@@ -26,7 +32,7 @@ func (h *ConsumersHandler) NextMessage(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	consumer, err := h.nc.JS().Consumer(ctx, streamName, consumerName)
+	consumer, err := nc.JS().Consumer(ctx, streamName, consumerName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

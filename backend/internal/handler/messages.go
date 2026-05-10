@@ -14,11 +14,16 @@ import (
 )
 
 type MessagesHandler struct {
-	nc *natsclient.Client
+	sm *natsclient.ServerManager
 }
 
-func NewMessagesHandler(nc *natsclient.Client) *MessagesHandler {
-	return &MessagesHandler{nc: nc}
+func NewMessagesHandler(sm *natsclient.ServerManager) *MessagesHandler {
+	return &MessagesHandler{sm: sm}
+}
+
+func (h *MessagesHandler) getClient(c *gin.Context) (*natsclient.Client, error) {
+	serverName := c.Param("server")
+	return h.sm.Get(serverName)
 }
 
 type publishRequest struct {
@@ -34,7 +39,13 @@ func (h *MessagesHandler) Publish(c *gin.Context) {
 		return
 	}
 
-	if err := h.nc.Publish(req.Subject, req.Data, req.Headers); err != nil {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := nc.Publish(req.Subject, req.Data, req.Headers); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -50,7 +61,13 @@ func (h *MessagesHandler) Subscribe(c *gin.Context) {
 		return
 	}
 
-	sub, ch, err := h.nc.Subscribe(subject)
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	sub, ch, err := nc.Subscribe(subject)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -128,6 +145,12 @@ func (h *MessagesHandler) RequestReply(c *gin.Context) {
 		return
 	}
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	timeout := 5 * time.Second
 	if req.Timeout > 0 {
 		timeout = time.Duration(req.Timeout) * time.Millisecond
@@ -144,7 +167,7 @@ func (h *MessagesHandler) RequestReply(c *gin.Context) {
 		}
 	}
 
-	resp, err := h.nc.Conn().RequestMsg(natsMsg, timeout)
+	resp, err := nc.Conn().RequestMsg(natsMsg, timeout)
 	if err != nil {
 		c.JSON(http.StatusGatewayTimeout, gin.H{"error": err.Error()})
 		return
@@ -171,7 +194,13 @@ func (h *MessagesHandler) RequestReply(c *gin.Context) {
 }
 
 func (h *MessagesHandler) ActiveSubjects(c *gin.Context) {
-	data, err := h.nc.FetchMonitoring("/connz?subs=1")
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	data, err := nc.FetchMonitoring("/connz?subs=1")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return

@@ -1,53 +1,71 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Activity, Play, Square, Trash2, Filter } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Activity, Play, Square, Trash2, Filter } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
-import { Input } from '../components/ui/input';
-import { subscribeSystemEvents, type SystemEvent } from '../services/api-client-extended';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
+import { Input } from "../components/ui/input";
+import { useServerStore } from "../stores/useServerStore";
+import {
+  subscribeSystemEvents,
+  type SystemEvent,
+} from "../services/api-client-extended";
 
 const MAX_EVENTS = 500;
 
 function getEventColor(subject: string): string {
   const lower = subject.toLowerCase();
-  if (lower.includes('disconnect') || lower.includes('error') || lower.includes('stall')) {
-    return 'text-red-600 dark:text-red-400';
+  if (
+    lower.includes("disconnect") ||
+    lower.includes("error") ||
+    lower.includes("stall")
+  ) {
+    return "text-red-600 dark:text-red-400";
   }
-  if (lower.includes('connect') || lower.includes('auth')) {
-    return 'text-green-600 dark:text-green-400';
+  if (lower.includes("connect") || lower.includes("auth")) {
+    return "text-green-600 dark:text-green-400";
   }
-  if (lower.includes('leafnode') || lower.includes('gateway')) {
-    return 'text-blue-600 dark:text-blue-400';
+  if (lower.includes("leafnode") || lower.includes("gateway")) {
+    return "text-blue-600 dark:text-blue-400";
   }
-  if (lower.includes('jetstream') || lower.includes('stream')) {
-    return 'text-purple-600 dark:text-purple-400';
+  if (lower.includes("jetstream") || lower.includes("stream")) {
+    return "text-purple-600 dark:text-purple-400";
   }
-  return 'text-foreground';
+  return "text-foreground";
 }
 
-function getEventBadgeVariant(subject: string): 'default' | 'destructive' | 'secondary' | 'outline' {
+function getEventBadgeVariant(
+  subject: string,
+): "default" | "destructive" | "secondary" | "outline" {
   const lower = subject.toLowerCase();
-  if (lower.includes('disconnect') || lower.includes('error')) return 'destructive';
-  if (lower.includes('connect')) return 'default';
-  return 'secondary';
+  if (lower.includes("disconnect") || lower.includes("error"))
+    return "destructive";
+  if (lower.includes("connect")) return "default";
+  return "secondary";
 }
 
 function getEventTypeLabel(subject: string): string {
-  const parts = subject.split('.');
+  const parts = subject.split(".");
   return parts[parts.length - 1] || subject;
 }
 
 export function SystemEvents() {
+  const currentServer = useServerStore((state) => state.currentServer);
   const [events, setEvents] = useState<SystemEvent[]>([]);
   const [listening, setListening] = useState(false);
-  const [subjectFilter, setSubjectFilter] = useState('');
+  const [subjectFilter, setSubjectFilter] = useState("");
   const stopRef = useRef<(() => void) | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   const startListening = useCallback(() => {
+    if (!currentServer) return;
     if (stopRef.current) stopRef.current();
-    const stop = subscribeSystemEvents((event) => {
+    const stop = subscribeSystemEvents(currentServer, (event) => {
       setEvents((prev) => {
         const next = [...prev, event];
         return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next;
@@ -55,7 +73,7 @@ export function SystemEvents() {
     });
     stopRef.current = stop;
     setListening(true);
-  }, []);
+  }, [currentServer]);
 
   const stopListening = useCallback(() => {
     stopRef.current?.();
@@ -80,7 +98,9 @@ export function SystemEvents() {
   }, [events]);
 
   const filteredEvents = subjectFilter.trim()
-    ? events.filter((e) => e.subject.toLowerCase().includes(subjectFilter.toLowerCase()))
+    ? events.filter((e) =>
+        e.subject.toLowerCase().includes(subjectFilter.toLowerCase()),
+      )
     : events;
 
   return (
@@ -139,7 +159,9 @@ export function SystemEvents() {
               <div className="flex flex-col items-center justify-center py-12">
                 <Activity className="h-10 w-10 text-muted-foreground/50 mb-3" />
                 <p className="text-sm text-muted-foreground">
-                  {listening ? 'Waiting for system events...' : 'Click Start to begin monitoring'}
+                  {listening
+                    ? "Waiting for system events..."
+                    : "Click Start to begin monitoring"}
                 </p>
               </div>
             ) : (
@@ -156,21 +178,52 @@ export function SystemEvents() {
   );
 }
 
-function EventStats({ events, listening }: { events: SystemEvent[]; listening: boolean }) {
-  const connectCount = events.filter((e) => e.subject.toLowerCase().includes('connect') && !e.subject.toLowerCase().includes('disconnect')).length;
-  const disconnectCount = events.filter((e) => e.subject.toLowerCase().includes('disconnect')).length;
+function EventStats({
+  events,
+  listening,
+}: {
+  events: SystemEvent[];
+  listening: boolean;
+}) {
+  const connectCount = events.filter(
+    (e) =>
+      e.subject.toLowerCase().includes("connect") &&
+      !e.subject.toLowerCase().includes("disconnect"),
+  ).length;
+  const disconnectCount = events.filter((e) =>
+    e.subject.toLowerCase().includes("disconnect"),
+  ).length;
 
   return (
     <div className="grid gap-4 md:grid-cols-4 flex-shrink-0">
       <StatCard label="Total Events" value={events.length} icon={Activity} />
-      <StatCard label="Connects" value={connectCount} icon={Play} className="text-green-600" />
-      <StatCard label="Disconnects" value={disconnectCount} icon={Square} className="text-red-600" />
-      <StatCard label="Status" value={listening ? 'Listening' : 'Stopped'} icon={Activity} />
+      <StatCard
+        label="Connects"
+        value={connectCount}
+        icon={Play}
+        className="text-green-600"
+      />
+      <StatCard
+        label="Disconnects"
+        value={disconnectCount}
+        icon={Square}
+        className="text-red-600"
+      />
+      <StatCard
+        label="Status"
+        value={listening ? "Listening" : "Stopped"}
+        icon={Activity}
+      />
     </div>
   );
 }
 
-function StatCard({ label, value, icon: Icon, className }: {
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  className,
+}: {
   label: string;
   value: string | number;
   icon: React.ElementType;
@@ -182,7 +235,9 @@ function StatCard({ label, value, icon: Icon, className }: {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-muted-foreground">{label}</p>
-            <p className={`text-xl font-bold ${className || ''}`}>{typeof value === 'number' ? value.toLocaleString() : value}</p>
+            <p className={`text-xl font-bold ${className || ""}`}>
+              {typeof value === "number" ? value.toLocaleString() : value}
+            </p>
           </div>
           <Icon className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -204,7 +259,10 @@ function EventRow({ event }: { event: SystemEvent }) {
         <span className="text-muted-foreground shrink-0 w-20">
           {new Date(event.timestamp).toLocaleTimeString()}
         </span>
-        <Badge variant={getEventBadgeVariant(event.subject)} className="text-[10px] shrink-0">
+        <Badge
+          variant={getEventBadgeVariant(event.subject)}
+          className="text-[10px] shrink-0"
+        >
           {getEventTypeLabel(event.subject)}
         </Badge>
         <span className={`font-mono truncate flex-1 ${colorClass}`}>
@@ -213,7 +271,9 @@ function EventRow({ event }: { event: SystemEvent }) {
       </div>
       {expanded && event.data && (
         <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-x-auto whitespace-pre-wrap">
-          {typeof event.data === 'string' ? event.data : JSON.stringify(event.data, null, 2)}
+          {typeof event.data === "string"
+            ? event.data
+            : JSON.stringify(event.data, null, 2)}
         </pre>
       )}
     </div>

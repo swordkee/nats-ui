@@ -12,10 +12,16 @@ import (
 func (h *StreamsHandler) Seal(c *gin.Context) {
 	name := c.Param("name")
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	stream, err := h.nc.JS().Stream(ctx, name)
+	stream, err := nc.JS().Stream(ctx, name)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -30,7 +36,7 @@ func (h *StreamsHandler) Seal(c *gin.Context) {
 	cfg := info.Config
 	cfg.Sealed = true
 
-	updated, err := h.nc.JS().UpdateStream(ctx, cfg)
+	updated, err := nc.JS().UpdateStream(ctx, cfg)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

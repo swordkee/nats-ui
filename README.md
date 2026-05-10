@@ -14,6 +14,7 @@ The backend proxies all NATS operations through a REST API, eliminating the need
 
 ## Features
 
+- **Multi-Server** — Monitor and manage multiple NATS servers from a single UI
 - **Dashboard** — Server info, JetStream stats, connections, resource usage
 - **Streams** — Create, update, delete, purge streams; view messages
 - **Consumers** — Manage durable and ephemeral consumers per stream
@@ -32,6 +33,16 @@ docker compose up -d
 ```
 
 Open http://localhost:8080. NATS is included and pre-configured with JetStream.
+
+### Multiple NATS Servers
+
+To monitor multiple NATS servers, set the `NATS_SERVERS` environment variable:
+
+```bash
+NATS_SERVERS='[{"name":"production","url":"nats://prod:4222","user":"admin","pass":"secret"},{"name":"staging","url":"nats://staging:4222","user":"admin","pass":"secret"}]'
+```
+
+The UI will display a server selector in the header when multiple servers are configured.
 
 ### Docker (standalone)
 

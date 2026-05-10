@@ -13,15 +13,30 @@ import (
 )
 
 type ServerHandler struct {
-	nc *natsclient.Client
+	sm *natsclient.ServerManager
 }
 
-func NewServerHandler(nc *natsclient.Client) *ServerHandler {
-	return &ServerHandler{nc: nc}
+func NewServerHandler(sm *natsclient.ServerManager) *ServerHandler {
+	return &ServerHandler{sm: sm}
+}
+
+func (h *ServerHandler) ListServers(c *gin.Context) {
+	servers := h.sm.List()
+	c.JSON(http.StatusOK, gin.H{"servers": servers})
+}
+
+func (h *ServerHandler) getClient(c *gin.Context) (*natsclient.Client, error) {
+	serverName := c.Param("server")
+	return h.sm.Get(serverName)
 }
 
 func (h *ServerHandler) Info(c *gin.Context) {
-	data, err := h.nc.FetchMonitoring("/varz")
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := nc.FetchMonitoring("/varz")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -30,11 +45,16 @@ func (h *ServerHandler) Info(c *gin.Context) {
 }
 
 func (h *ServerHandler) Connections(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	path := "/connz"
 	if subs := c.Query("subs"); subs != "" {
 		path += "?subs=" + subs
 	}
-	data, err := h.nc.FetchMonitoring(path)
+	data, err := nc.FetchMonitoring(path)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -43,12 +63,17 @@ func (h *ServerHandler) Connections(c *gin.Context) {
 }
 
 func (h *ServerHandler) JetStreamInfo(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	path := "/jsz"
 	q := c.Request.URL.RawQuery
 	if q != "" {
 		path += "?" + q
 	}
-	data, err := h.nc.FetchMonitoring(path)
+	data, err := nc.FetchMonitoring(path)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -57,12 +82,17 @@ func (h *ServerHandler) JetStreamInfo(c *gin.Context) {
 }
 
 func (h *ServerHandler) Subscriptions(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	path := "/subsz"
 	q := c.Request.URL.RawQuery
 	if q != "" {
 		path += "?" + q
 	}
-	data, err := h.nc.FetchMonitoring(path)
+	data, err := nc.FetchMonitoring(path)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -71,7 +101,12 @@ func (h *ServerHandler) Subscriptions(c *gin.Context) {
 }
 
 func (h *ServerHandler) Routes(c *gin.Context) {
-	data, err := h.nc.FetchMonitoring("/routez")
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := nc.FetchMonitoring("/routez")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -80,14 +115,24 @@ func (h *ServerHandler) Routes(c *gin.Context) {
 }
 
 func (h *ServerHandler) Health(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"status":    "ok",
-		"connected": h.nc.IsConnected(),
+		"connected": nc.IsConnected(),
 	})
 }
 
 func (h *ServerHandler) Gateways(c *gin.Context) {
-	data, err := h.nc.FetchMonitoring("/gatewayz")
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := nc.FetchMonitoring("/gatewayz")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -96,7 +141,12 @@ func (h *ServerHandler) Gateways(c *gin.Context) {
 }
 
 func (h *ServerHandler) Leafnodes(c *gin.Context) {
-	data, err := h.nc.FetchMonitoring("/leafz")
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := nc.FetchMonitoring("/leafz")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -105,7 +155,12 @@ func (h *ServerHandler) Leafnodes(c *gin.Context) {
 }
 
 func (h *ServerHandler) Accounts(c *gin.Context) {
-	data, err := h.nc.FetchMonitoring("/accountz")
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := nc.FetchMonitoring("/accountz")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -114,8 +169,13 @@ func (h *ServerHandler) Accounts(c *gin.Context) {
 }
 
 func (h *ServerHandler) AccountDetail(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	account := c.Param("account")
-	data, err := h.nc.FetchMonitoring("/accountz?acc=" + account)
+	data, err := nc.FetchMonitoring("/accountz?acc=" + account)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -124,7 +184,12 @@ func (h *ServerHandler) AccountDetail(c *gin.Context) {
 }
 
 func (h *ServerHandler) ServerVarz(c *gin.Context) {
-	data, err := h.nc.FetchMonitoring("/varz")
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := nc.FetchMonitoring("/varz")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -133,7 +198,12 @@ func (h *ServerHandler) ServerVarz(c *gin.Context) {
 }
 
 func (h *ServerHandler) HealthCheck(c *gin.Context) {
-	data, err := h.nc.FetchMonitoring("/healthz")
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	data, err := nc.FetchMonitoring("/healthz")
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -143,9 +213,14 @@ func (h *ServerHandler) HealthCheck(c *gin.Context) {
 
 // SystemEvents uses Server-Sent Events to stream NATS system events
 func (h *ServerHandler) SystemEvents(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
 	subject := c.DefaultQuery("subject", "$SYS.>")
 
-	sub, ch, err := h.nc.Subscribe(subject)
+	sub, ch, err := nc.Subscribe(subject)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

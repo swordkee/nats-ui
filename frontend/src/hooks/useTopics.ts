@@ -1,17 +1,24 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { toast } from 'sonner';
-import { fetchActiveSubjects } from '../services/nats-service';
-import { subjectTracker, type SubjectActivity } from '../services/subject-tracker';
-import { useTopicStore } from '../stores/topic-store';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { toast } from "sonner";
+import { fetchActiveSubjects } from "../services/nats-service";
+import {
+  subjectTracker,
+  type SubjectActivity,
+} from "../services/subject-tracker";
+import { useTopicStore } from "../stores/topic-store";
+import { useServerStore } from "../stores/useServerStore";
 
 interface UseTopicsOptions {
   isConnected: boolean;
 }
 
 export function useTopics({ isConnected }: UseTopicsOptions) {
+  const currentServer = useServerStore((state) => state.currentServer);
   const [serverTopics, setServerTopics] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [activities, setActivities] = useState<Map<string, SubjectActivity>>(new Map());
+  const [activities, setActivities] = useState<Map<string, SubjectActivity>>(
+    new Map(),
+  );
 
   const customTopics = useTopicStore((s) => s.customTopics);
   const hideInbox = useTopicStore((s) => s.hideInbox);
@@ -19,15 +26,22 @@ export function useTopics({ isConnected }: UseTopicsOptions) {
   const removeCustomTopic = useTopicStore((s) => s.removeCustomTopic);
   const isCustomTopic = useTopicStore((s) => s.isCustomTopic);
 
-  const serverCache = useRef<{ topics: Set<string>; timestamp: number }>({ topics: new Set(), timestamp: 0 });
-  const lastHash = useRef('');
+  const serverCache = useRef<{ topics: Set<string>; timestamp: number }>({
+    topics: new Set(),
+    timestamp: 0,
+  });
+  const lastHash = useRef("");
 
-  const createHash = useCallback((arr: string[]) => arr.sort().join('|'), []);
+  const createHash = useCallback((arr: string[]) => arr.sort().join("|"), []);
 
   const mergeAll = useCallback(() => {
     const trackerTopics = subjectTracker.getSubjects().map((s) => s.subject);
     const all = Array.from(
-      new Set([...serverCache.current.topics, ...trackerTopics, ...customTopics]),
+      new Set([
+        ...serverCache.current.topics,
+        ...trackerTopics,
+        ...customTopics,
+      ]),
     ).sort();
     const hash = createHash(all);
     if (hash !== lastHash.current) {
@@ -37,35 +51,38 @@ export function useTopics({ isConnected }: UseTopicsOptions) {
   }, [createHash, customTopics]);
 
   const fetchServerTopics = useCallback(async (): Promise<Set<string>> => {
-    if (!isConnected) return new Set();
+    if (!isConnected || !currentServer) return new Set();
     const now = Date.now();
-    if (now - serverCache.current.timestamp < 30000 && serverCache.current.topics.size > 0) {
+    if (
+      now - serverCache.current.timestamp < 30000 &&
+      serverCache.current.topics.size > 0
+    ) {
       return serverCache.current.topics;
     }
     try {
-      const result = await fetchActiveSubjects();
+      const result = await fetchActiveSubjects(currentServer);
       const set = new Set(result);
       serverCache.current = { topics: set, timestamp: now };
       return set;
     } catch {
       return serverCache.current.topics;
     }
-  }, [isConnected]);
+  }, [isConnected, currentServer]);
 
   const refresh = useCallback(async () => {
-    if (!isConnected) return;
+    if (!isConnected || !currentServer) return;
     setIsLoading(true);
     try {
-      const fresh = await fetchActiveSubjects();
+      const fresh = await fetchActiveSubjects(currentServer);
       serverCache.current = { topics: new Set(fresh), timestamp: Date.now() };
       mergeAll();
-      toast.success('Topics refreshed');
+      toast.success("Topics refreshed");
     } catch {
-      toast.error('Failed to refresh topics');
+      toast.error("Failed to refresh topics");
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, mergeAll]);
+  }, [isConnected, currentServer, mergeAll]);
 
   // Initial fetch + server polling
   useEffect(() => {
@@ -87,10 +104,15 @@ export function useTopics({ isConnected }: UseTopicsOptions) {
       try {
         await fetchServerTopics();
         mergeAll();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }, 30000);
 
-    return () => { cancelled = true; clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [isConnected, fetchServerTopics, mergeAll]);
 
   // Subject tracker updates (debounced)
@@ -109,7 +131,10 @@ export function useTopics({ isConnected }: UseTopicsOptions) {
       }, delay);
     });
 
-    return () => { clearTimeout(timeout); unsub(); };
+    return () => {
+      clearTimeout(timeout);
+      unsub();
+    };
   }, [isConnected, mergeAll]);
 
   // Re-merge when customTopics change
@@ -128,7 +153,7 @@ export function useTopics({ isConnected }: UseTopicsOptions) {
   }, []);
 
   const filteredTopics = hideInbox
-    ? serverTopics.filter((t) => !t.startsWith('_INBOX.'))
+    ? serverTopics.filter((t) => !t.startsWith("_INBOX."))
     : serverTopics;
 
   return {

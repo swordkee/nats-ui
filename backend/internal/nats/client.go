@@ -18,6 +18,7 @@ import (
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 type Client struct {
+	name    string
 	conn    *nats.Conn
 	js      jetstream.JetStream
 	httpURL string
@@ -25,6 +26,10 @@ type Client struct {
 }
 
 func NewClient(cfg *config.Config) (*Client, error) {
+	return NewClientFromServer(cfg.Servers[0])
+}
+
+func NewClientFromServer(server config.NatServer) (*Client, error) {
 	opts := []nats.Option{
 		nats.Name("nats-ui-backend"),
 		nats.Timeout(10 * time.Second),
@@ -32,11 +37,11 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		nats.MaxReconnects(-1),
 	}
 
-	if cfg.NatsUser != "" && cfg.NatsPass != "" {
-		opts = append(opts, nats.UserInfo(cfg.NatsUser, cfg.NatsPass))
+	if server.User != "" && server.Pass != "" {
+		opts = append(opts, nats.UserInfo(server.User, server.Pass))
 	}
 
-	conn, err := nats.Connect(cfg.NatsURL, opts...)
+	conn, err := nats.Connect(server.URL, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("nats connect: %w", err)
 	}
@@ -46,20 +51,22 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("jetstream init: %w", err)
 	}
 
-	httpURL := cfg.NatsMonitoringURL
+	httpURL := server.Monitor
 	if httpURL == "" {
-		httpURL = deriveHTTPURL(cfg.NatsURL)
+		httpURL = deriveHTTPURL(server.URL)
 	}
 
 	return &Client{
+		name:    server.Name,
 		conn:    conn,
 		js:      js,
 		httpURL: httpURL,
 	}, nil
 }
 
+func (c *Client) Name() string            { return c.name }
 func (c *Client) Conn() *nats.Conn        { return c.conn }
-func (c *Client) JS() jetstream.JetStream  { return c.js }
+func (c *Client) JS() jetstream.JetStream { return c.js }
 
 func (c *Client) Close() {
 	c.conn.Close()

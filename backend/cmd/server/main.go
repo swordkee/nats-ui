@@ -22,13 +22,13 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Connect to NATS
-	nc, err := natsclient.NewClient(cfg)
+	// Connect to NATS servers
+	sm, err := natsclient.NewServerManager(cfg)
 	if err != nil {
-		log.Fatalf("failed to connect to NATS: %v", err)
+		log.Fatalf("failed to connect to NATS servers: %v", err)
 	}
-	defer nc.Close()
-	log.Printf("connected to NATS at %s", cfg.NatsURL)
+	defer sm.Close()
+	log.Printf("connected to %d NATS server(s): %v", len(cfg.Servers), cfg.Servers)
 
 	// Auth
 	auth := middleware.NewAuthMiddleware(cfg.JWTSecret)
@@ -36,13 +36,13 @@ func main() {
 	// Handlers
 	authH := handler.NewAuthHandler(cfg, auth)
 	oauth2H := handler.NewOAuth2Handler(cfg, auth)
-	serverH := handler.NewServerHandler(nc)
-	streamsH := handler.NewStreamsHandler(nc)
-	consumersH := handler.NewConsumersHandler(nc)
-	kvH := handler.NewKVHandler(nc)
-	objH := handler.NewObjectStoreHandler(nc)
-	messagesH := handler.NewMessagesHandler(nc)
-	benchH := handler.NewBenchHandler(nc)
+	serverH := handler.NewServerHandler(sm)
+	streamsH := handler.NewStreamsHandler(sm)
+	consumersH := handler.NewConsumersHandler(sm)
+	kvH := handler.NewKVHandler(sm)
+	objH := handler.NewObjectStoreHandler(sm)
+	messagesH := handler.NewMessagesHandler(sm)
+	benchH := handler.NewBenchHandler(sm)
 
 	// Router
 	if os.Getenv("GIN_MODE") == "" {
@@ -68,6 +68,7 @@ func main() {
 	r.Use(middleware.RateLimit(rps))
 
 	// Validation helpers
+	validateServer := middleware.ValidatePathParam("server")
 	validateName := middleware.ValidatePathParam("name")
 	validateConsumer := middleware.ValidatePathParam("consumer")
 	validateBucket := middleware.ValidatePathParam("bucket")
@@ -88,68 +89,71 @@ func main() {
 	{
 		protected.GET("/auth/me", authH.Me)
 
-		// Server monitoring
-		protected.GET("/server/info", serverH.Info)
-		protected.GET("/server/connections", serverH.Connections)
-		protected.GET("/server/jetstream", serverH.JetStreamInfo)
-		protected.GET("/server/subscriptions", serverH.Subscriptions)
-		protected.GET("/server/routes", serverH.Routes)
-		protected.GET("/server/gateways", serverH.Gateways)
-		protected.GET("/server/leafnodes", serverH.Leafnodes)
-		protected.GET("/server/accounts", serverH.Accounts)
-		protected.GET("/server/accounts/:account", validateAccount, serverH.AccountDetail)
-		protected.GET("/server/varz", serverH.ServerVarz)
-		protected.GET("/server/healthz", serverH.HealthCheck)
-		protected.GET("/server/events", serverH.SystemEvents)
+		// Server list
+		protected.GET("/servers", serverH.ListServers)
 
-		// Streams
-		protected.GET("/streams", streamsH.List)
-		protected.POST("/streams", streamsH.Create)
-		protected.GET("/streams/:name", validateName, streamsH.Get)
-		protected.PUT("/streams/:name", validateName, streamsH.Update)
-		protected.DELETE("/streams/:name", validateName, streamsH.Delete)
-		protected.POST("/streams/:name/purge", validateName, streamsH.Purge)
-		protected.POST("/streams/:name/seal", validateName, streamsH.Seal)
-		protected.GET("/streams/:name/messages", validateName, streamsH.GetMessages)
+		// Server monitoring (with server name)
+		protected.GET("/servers/:server/info", validateServer, serverH.Info)
+		protected.GET("/servers/:server/connections", validateServer, serverH.Connections)
+		protected.GET("/servers/:server/jetstream", validateServer, serverH.JetStreamInfo)
+		protected.GET("/servers/:server/subscriptions", validateServer, serverH.Subscriptions)
+		protected.GET("/servers/:server/routes", validateServer, serverH.Routes)
+		protected.GET("/servers/:server/gateways", validateServer, serverH.Gateways)
+		protected.GET("/servers/:server/leafnodes", validateServer, serverH.Leafnodes)
+		protected.GET("/servers/:server/accounts", validateServer, serverH.Accounts)
+		protected.GET("/servers/:server/accounts/:account", validateServer, validateAccount, serverH.AccountDetail)
+		protected.GET("/servers/:server/varz", validateServer, serverH.ServerVarz)
+		protected.GET("/servers/:server/healthz", validateServer, serverH.HealthCheck)
+		protected.GET("/servers/:server/events", validateServer, serverH.SystemEvents)
 
-		// Consumers
-		protected.GET("/streams/:name/consumers", validateName, consumersH.List)
-		protected.POST("/streams/:name/consumers", validateName, consumersH.Create)
-		protected.GET("/streams/:name/consumers/:consumer", validateName, validateConsumer, consumersH.Get)
-		protected.DELETE("/streams/:name/consumers/:consumer", validateName, validateConsumer, consumersH.Delete)
-		protected.POST("/streams/:name/consumers/:consumer/pause", validateName, validateConsumer, consumersH.Pause)
-		protected.POST("/streams/:name/consumers/:consumer/resume", validateName, validateConsumer, consumersH.Resume)
-		protected.POST("/streams/:name/consumers/:consumer/next", validateName, validateConsumer, consumersH.NextMessage)
+		// Streams (with server name)
+		protected.GET("/servers/:server/streams", validateServer, streamsH.List)
+		protected.POST("/servers/:server/streams", validateServer, streamsH.Create)
+		protected.GET("/servers/:server/streams/:name", validateServer, validateName, streamsH.Get)
+		protected.PUT("/servers/:server/streams/:name", validateServer, validateName, streamsH.Update)
+		protected.DELETE("/servers/:server/streams/:name", validateServer, validateName, streamsH.Delete)
+		protected.POST("/servers/:server/streams/:name/purge", validateServer, validateName, streamsH.Purge)
+		protected.POST("/servers/:server/streams/:name/seal", validateServer, validateName, streamsH.Seal)
+		protected.GET("/servers/:server/streams/:name/messages", validateServer, validateName, streamsH.GetMessages)
 
-		// KV Store
-		protected.GET("/kv", kvH.ListBuckets)
-		protected.POST("/kv", kvH.CreateBucket)
-		protected.DELETE("/kv/:bucket", validateBucket, kvH.DeleteBucket)
-		protected.GET("/kv/:bucket/keys", validateBucket, kvH.ListKeys)
-		protected.GET("/kv/:bucket/keys/:key", validateBucket, kvH.GetValue)
-		protected.PUT("/kv/:bucket/keys/:key", validateBucket, kvH.PutValue)
-		protected.DELETE("/kv/:bucket/keys/:key", validateBucket, kvH.DeleteKey)
-		protected.GET("/kv/:bucket/watch", validateBucket, kvH.WatchKeys)
+		// Consumers (with server name)
+		protected.GET("/servers/:server/streams/:name/consumers", validateServer, validateName, consumersH.List)
+		protected.POST("/servers/:server/streams/:name/consumers", validateServer, validateName, consumersH.Create)
+		protected.GET("/servers/:server/streams/:name/consumers/:consumer", validateServer, validateName, validateConsumer, consumersH.Get)
+		protected.DELETE("/servers/:server/streams/:name/consumers/:consumer", validateServer, validateName, validateConsumer, consumersH.Delete)
+		protected.POST("/servers/:server/streams/:name/consumers/:consumer/pause", validateServer, validateName, validateConsumer, consumersH.Pause)
+		protected.POST("/servers/:server/streams/:name/consumers/:consumer/resume", validateServer, validateName, validateConsumer, consumersH.Resume)
+		protected.POST("/servers/:server/streams/:name/consumers/:consumer/next", validateServer, validateName, validateConsumer, consumersH.NextMessage)
 
-		// Object Store
-		protected.GET("/objectstore", objH.ListBuckets)
-		protected.POST("/objectstore", objH.CreateBucket)
-		protected.GET("/objectstore/:bucket", validateBucket, objH.GetBucket)
-		protected.DELETE("/objectstore/:bucket", validateBucket, objH.DeleteBucket)
-		protected.GET("/objectstore/:bucket/objects", validateBucket, objH.ListObjects)
-		protected.GET("/objectstore/:bucket/objects/:name", validateBucket, validateName, objH.GetObject)
-		protected.PUT("/objectstore/:bucket/objects/:name", validateBucket, validateName, objH.PutObject)
-		protected.DELETE("/objectstore/:bucket/objects/:name", validateBucket, validateName, objH.DeleteObject)
-		protected.GET("/objectstore/:bucket/objects/:name/info", validateBucket, validateName, objH.GetObjectInfo)
+		// KV Store (with server name)
+		protected.GET("/servers/:server/kv", validateServer, kvH.ListBuckets)
+		protected.POST("/servers/:server/kv", validateServer, kvH.CreateBucket)
+		protected.DELETE("/servers/:server/kv/:bucket", validateServer, validateBucket, kvH.DeleteBucket)
+		protected.GET("/servers/:server/kv/:bucket/keys", validateServer, validateBucket, kvH.ListKeys)
+		protected.GET("/servers/:server/kv/:bucket/keys/:key", validateServer, validateBucket, kvH.GetValue)
+		protected.PUT("/servers/:server/kv/:bucket/keys/:key", validateServer, validateBucket, kvH.PutValue)
+		protected.DELETE("/servers/:server/kv/:bucket/keys/:key", validateServer, validateBucket, kvH.DeleteKey)
+		protected.GET("/servers/:server/kv/:bucket/watch", validateServer, validateBucket, kvH.WatchKeys)
 
-		// Messages
-		protected.POST("/messages/publish", messagesH.Publish)
-		protected.POST("/messages/request", messagesH.RequestReply)
-		protected.GET("/messages/subscribe", messagesH.Subscribe)
-		protected.GET("/messages/subjects", messagesH.ActiveSubjects)
+		// Object Store (with server name)
+		protected.GET("/servers/:server/objectstore", validateServer, objH.ListBuckets)
+		protected.POST("/servers/:server/objectstore", validateServer, objH.CreateBucket)
+		protected.GET("/servers/:server/objectstore/:bucket", validateServer, validateBucket, objH.GetBucket)
+		protected.DELETE("/servers/:server/objectstore/:bucket", validateServer, validateBucket, objH.DeleteBucket)
+		protected.GET("/servers/:server/objectstore/:bucket/objects", validateServer, validateBucket, objH.ListObjects)
+		protected.GET("/servers/:server/objectstore/:bucket/objects/:name", validateServer, validateBucket, validateName, objH.GetObject)
+		protected.PUT("/servers/:server/objectstore/:bucket/objects/:name", validateServer, validateBucket, validateName, objH.PutObject)
+		protected.DELETE("/servers/:server/objectstore/:bucket/objects/:name", validateServer, validateBucket, validateName, objH.DeleteObject)
+		protected.GET("/servers/:server/objectstore/:bucket/objects/:name/info", validateServer, validateBucket, validateName, objH.GetObjectInfo)
 
-		// Benchmark
-		protected.POST("/bench", benchH.Run)
+		// Messages (with server name)
+		protected.POST("/servers/:server/messages/publish", validateServer, messagesH.Publish)
+		protected.POST("/servers/:server/messages/request", validateServer, messagesH.RequestReply)
+		protected.GET("/servers/:server/messages/subscribe", validateServer, messagesH.Subscribe)
+		protected.GET("/servers/:server/messages/subjects", validateServer, messagesH.ActiveSubjects)
+
+		// Benchmark (with server name)
+		protected.POST("/servers/:server/bench", validateServer, benchH.Run)
 	}
 
 	// SPA fallback for client-side routing
@@ -165,7 +169,7 @@ func main() {
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
 		log.Println("shutting down...")
-		nc.Close()
+		sm.Close()
 		os.Exit(0)
 	}()
 

@@ -15,21 +15,32 @@ import (
 )
 
 type KVHandler struct {
-	nc *natsclient.Client
+	sm *natsclient.ServerManager
 }
 
-func NewKVHandler(nc *natsclient.Client) *KVHandler {
-	return &KVHandler{nc: nc}
+func NewKVHandler(sm *natsclient.ServerManager) *KVHandler {
+	return &KVHandler{sm: sm}
+}
+
+func (h *KVHandler) getClient(c *gin.Context) (*natsclient.Client, error) {
+	serverName := c.Param("server")
+	return h.sm.Get(serverName)
 }
 
 func (h *KVHandler) ListBuckets(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	var buckets []map[string]any
-	lister := h.nc.JS().KeyValueStoreNames(ctx)
+	lister := nc.JS().KeyValueStoreNames(ctx)
 	for name := range lister.Name() {
-		kv, err := h.nc.JS().KeyValue(ctx, name)
+		kv, err := nc.JS().KeyValue(ctx, name)
 		if err != nil {
 			continue
 		}
@@ -65,6 +76,12 @@ func (h *KVHandler) CreateBucket(c *gin.Context) {
 		return
 	}
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
@@ -78,7 +95,7 @@ func (h *KVHandler) CreateBucket(c *gin.Context) {
 		cfg.History = uint8(req.History)
 	}
 
-	kv, err := h.nc.JS().CreateKeyValue(ctx, cfg)
+	kv, err := nc.JS().CreateKeyValue(ctx, cfg)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -97,11 +114,17 @@ func (h *KVHandler) CreateBucket(c *gin.Context) {
 }
 
 func (h *KVHandler) DeleteBucket(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	name := c.Param("bucket")
-	if err := h.nc.JS().DeleteKeyValue(ctx, name); err != nil {
+	if err := nc.JS().DeleteKeyValue(ctx, name); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -109,11 +132,17 @@ func (h *KVHandler) DeleteBucket(c *gin.Context) {
 }
 
 func (h *KVHandler) ListKeys(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
-	kv, err := h.nc.JS().KeyValue(ctx, bucket)
+	kv, err := nc.JS().KeyValue(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -136,13 +165,19 @@ func (h *KVHandler) ListKeys(c *gin.Context) {
 }
 
 func (h *KVHandler) GetValue(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
 	key := c.Param("key")
 
-	kv, err := h.nc.JS().KeyValue(ctx, bucket)
+	kv, err := nc.JS().KeyValue(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -173,13 +208,19 @@ func (h *KVHandler) PutValue(c *gin.Context) {
 		return
 	}
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
 	key := c.Param("key")
 
-	kv, err := h.nc.JS().KeyValue(ctx, bucket)
+	kv, err := nc.JS().KeyValue(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -195,13 +236,19 @@ func (h *KVHandler) PutValue(c *gin.Context) {
 }
 
 func (h *KVHandler) DeleteKey(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	bucket := c.Param("bucket")
 	key := c.Param("key")
 
-	kv, err := h.nc.JS().KeyValue(ctx, bucket)
+	kv, err := nc.JS().KeyValue(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -220,10 +267,16 @@ func (h *KVHandler) WatchKeys(c *gin.Context) {
 	bucket := c.Param("bucket")
 	key := c.DefaultQuery("key", ">")
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
 
-	kv, err := h.nc.JS().KeyValue(ctx, bucket)
+	kv, err := nc.JS().KeyValue(ctx, bucket)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

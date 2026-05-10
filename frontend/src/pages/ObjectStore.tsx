@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from 'react';
-import { FileBox } from 'lucide-react';
+import { useState, useCallback, useEffect } from "react";
+import { FileBox } from "lucide-react";
 
-import { Card, CardContent } from '../components/ui/card';
-import { useNats } from '../hooks/useNats';
-import { toast } from 'sonner';
+import { Card, CardContent } from "../components/ui/card";
+import { useNats } from "../hooks/useNats";
+import { useServerStore } from "../stores/useServerStore";
+import { toast } from "sonner";
 import {
   listObjectStoreBuckets,
   listObjects,
@@ -12,20 +13,21 @@ import {
   uploadObject,
   downloadObject,
   deleteObject,
-} from '../services/api-client';
-import type { ObjectStoreBucket, ObjectInfo } from '../services/api-client';
+} from "../services/api-client";
+import type { ObjectStoreBucket, ObjectInfo } from "../services/api-client";
 
-import { BucketList } from '../components/objectstore/BucketList';
-import { ObjectList } from '../components/objectstore/ObjectList';
-import { UploadDialog } from '../components/objectstore/UploadDialog';
-import { ObjectInfoDialog } from '../components/objectstore/ObjectInfoDialog';
+import { BucketList } from "../components/objectstore/BucketList";
+import { ObjectList } from "../components/objectstore/ObjectList";
+import { UploadDialog } from "../components/objectstore/UploadDialog";
+import { ObjectInfoDialog } from "../components/objectstore/ObjectInfoDialog";
 import {
   CreateBucketDialog,
   type CreateBucketFormData,
-} from '../components/objectstore/CreateBucketDialog';
+} from "../components/objectstore/CreateBucketDialog";
 
 export function ObjectStore() {
   const { isConnected } = useNats();
+  const currentServer = useServerStore((state) => state.currentServer);
 
   const [buckets, setBuckets] = useState<ObjectStoreBucket[]>([]);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
@@ -38,30 +40,36 @@ export function ObjectStore() {
   const [infoObject, setInfoObject] = useState<ObjectInfo | null>(null);
 
   const fetchBuckets = useCallback(async () => {
-    if (!isConnected) return;
+    if (!isConnected || !currentServer) return;
     setLoadingBuckets(true);
     try {
-      const data = await listObjectStoreBuckets();
+      const data = await listObjectStoreBuckets(currentServer);
       setBuckets(data ?? []);
     } catch (error) {
-      console.error('Failed to fetch object store buckets:', error);
+      console.error("Failed to fetch object store buckets:", error);
     } finally {
       setLoadingBuckets(false);
     }
-  }, [isConnected]);
+  }, [isConnected, currentServer]);
 
-  const fetchObjects = useCallback(async (bucket: string) => {
-    setLoadingObjects(true);
-    try {
-      const data = await listObjects(bucket);
-      setObjects(data ?? []);
-    } catch (error) {
-      console.error('Failed to fetch objects:', error);
-      toast.error(`Failed to load objects: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setLoadingObjects(false);
-    }
-  }, []);
+  const fetchObjects = useCallback(
+    async (bucket: string) => {
+      if (!currentServer) return;
+      setLoadingObjects(true);
+      try {
+        const data = await listObjects(currentServer, bucket);
+        setObjects(data ?? []);
+      } catch (error) {
+        console.error("Failed to fetch objects:", error);
+        toast.error(
+          `Failed to load objects: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      } finally {
+        setLoadingObjects(false);
+      }
+    },
+    [currentServer],
+  );
 
   useEffect(() => {
     fetchBuckets();
@@ -84,8 +92,9 @@ export function ObjectStore() {
 
   const handleCreateBucket = useCallback(
     async (data: CreateBucketFormData) => {
+      if (!currentServer) return;
       try {
-        await createObjectStoreBucket({
+        await createObjectStoreBucket(currentServer, {
           name: data.name,
           description: data.description,
           max_bytes: data.max_bytes,
@@ -95,58 +104,59 @@ export function ObjectStore() {
         setIsCreateBucketOpen(false);
         await fetchBuckets();
       } catch (error) {
-        const msg = error instanceof Error ? error.message : 'Unknown error';
-        if (msg.includes('already exists')) {
+        const msg = error instanceof Error ? error.message : "Unknown error";
+        if (msg.includes("already exists")) {
           toast.error(`Bucket "${data.name}" already exists`);
         } else {
           toast.error(`Failed to create bucket: ${msg}`);
         }
       }
     },
-    [fetchBuckets],
+    [currentServer, fetchBuckets],
   );
 
   const handleDeleteBucket = useCallback(
     async (name: string) => {
+      if (!currentServer) return;
       try {
-        await deleteObjectStoreBucket(name);
+        await deleteObjectStoreBucket(currentServer, name);
         toast.success(`Deleted bucket: ${name}`);
         if (selectedBucket === name) setSelectedBucket(null);
         await fetchBuckets();
       } catch (error) {
         toast.error(
-          `Failed to delete bucket: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Failed to delete bucket: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
     },
-    [selectedBucket, fetchBuckets],
+    [currentServer, selectedBucket, fetchBuckets],
   );
 
   const handleUpload = useCallback(
     async (name: string, file: File) => {
-      if (!selectedBucket) return;
+      if (!selectedBucket || !currentServer) return;
       try {
         const buffer = await file.arrayBuffer();
-        await uploadObject(selectedBucket, name, buffer);
+        await uploadObject(currentServer, selectedBucket, name, buffer);
         toast.success(`Uploaded: ${name}`);
         await fetchObjects(selectedBucket);
       } catch (error) {
         toast.error(
-          `Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
         throw error;
       }
     },
-    [selectedBucket, fetchObjects],
+    [currentServer, selectedBucket, fetchObjects],
   );
 
   const handleDownload = useCallback(
     async (name: string) => {
-      if (!selectedBucket) return;
+      if (!selectedBucket || !currentServer) return;
       try {
-        const blob = await downloadObject(selectedBucket, name);
+        const blob = await downloadObject(currentServer, selectedBucket, name);
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = url;
         a.download = name;
         document.body.appendChild(a);
@@ -156,27 +166,27 @@ export function ObjectStore() {
         toast.success(`Downloaded: ${name}`);
       } catch (error) {
         toast.error(
-          `Download failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Download failed: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
     },
-    [selectedBucket],
+    [currentServer, selectedBucket],
   );
 
   const handleDeleteObject = useCallback(
     async (name: string) => {
-      if (!selectedBucket) return;
+      if (!selectedBucket || !currentServer) return;
       try {
-        await deleteObject(selectedBucket, name);
+        await deleteObject(currentServer, selectedBucket, name);
         toast.success(`Deleted: ${name}`);
         await fetchObjects(selectedBucket);
       } catch (error) {
         toast.error(
-          `Failed to delete object: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Failed to delete object: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
     },
-    [selectedBucket, fetchObjects],
+    [currentServer, selectedBucket, fetchObjects],
   );
 
   if (!isConnected) {

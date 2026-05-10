@@ -12,19 +12,30 @@ import (
 )
 
 type StreamsHandler struct {
-	nc *natsclient.Client
+	sm *natsclient.ServerManager
 }
 
-func NewStreamsHandler(nc *natsclient.Client) *StreamsHandler {
-	return &StreamsHandler{nc: nc}
+func NewStreamsHandler(sm *natsclient.ServerManager) *StreamsHandler {
+	return &StreamsHandler{sm: sm}
+}
+
+func (h *StreamsHandler) getClient(c *gin.Context) (*natsclient.Client, error) {
+	serverName := c.Param("server")
+	return h.sm.Get(serverName)
 }
 
 func (h *StreamsHandler) List(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	var streams []map[string]any
-	lister := h.nc.JS().ListStreams(ctx)
+	lister := nc.JS().ListStreams(ctx)
 	for info := range lister.Info() {
 		streams = append(streams, map[string]any{
 			"config": info.Config,
@@ -42,11 +53,17 @@ func (h *StreamsHandler) List(c *gin.Context) {
 }
 
 func (h *StreamsHandler) Get(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	name := c.Param("name")
-	stream, err := h.nc.JS().Stream(ctx, name)
+	stream, err := nc.JS().Stream(ctx, name)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -113,10 +130,16 @@ func (h *StreamsHandler) Create(c *gin.Context) {
 		return
 	}
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	stream, err := h.nc.JS().CreateStream(ctx, req.toStreamConfig())
+	stream, err := nc.JS().CreateStream(ctx, req.toStreamConfig())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -140,12 +163,18 @@ func (h *StreamsHandler) Update(c *gin.Context) {
 		return
 	}
 
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	req.Name = c.Param("name")
 
-	stream, err := h.nc.JS().UpdateStream(ctx, req.toStreamConfig())
+	stream, err := nc.JS().UpdateStream(ctx, req.toStreamConfig())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -167,11 +196,17 @@ type purgeRequest struct {
 }
 
 func (h *StreamsHandler) Purge(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	name := c.Param("name")
-	stream, err := h.nc.JS().Stream(ctx, name)
+	stream, err := nc.JS().Stream(ctx, name)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -194,11 +229,17 @@ func (h *StreamsHandler) Purge(c *gin.Context) {
 }
 
 func (h *StreamsHandler) Delete(c *gin.Context) {
+	nc, err := h.getClient(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
 	name := c.Param("name")
-	if err := h.nc.JS().DeleteStream(ctx, name); err != nil {
+	if err := nc.JS().DeleteStream(ctx, name); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
